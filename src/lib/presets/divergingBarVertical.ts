@@ -1,0 +1,155 @@
+import { baseConfig } from '@prc/charting-utilities'
+import { BaseConfig as BaseConfigType } from '@prc/charting-utilities'
+
+const divergingBarVerticalConfig: BaseConfigType = {
+  ...baseConfig,
+  layout: {
+    ...baseConfig.layout,
+    type: 'diverging-bar',
+    orientation: 'vertical',
+    height: 400,
+    width: 420,
+    padding: { top: 50, bottom: 160, left: 20, right: 20 },
+    horizontalRules: true,
+  },
+  metadata: {
+    ...baseConfig.metadata,
+    active: true,
+    title: 'Stacked bars 💪Stacked bars 💪Stacked bars 💪',
+    subtitle: 'Stonks',
+    note: "Note: Hi here is my note. Hope you're well",
+    source:
+      '<p>Source: <a href="#">Spring 2018 Global Attitudes Survey</a>.</p><p>New line</p>',
+  },
+  colors: ['#00557E', '#0090C0', '#71B2D6', '#9DC7E1', '#bc7b2b', '#eeece4'],
+  dataRender: {
+    ...baseConfig.dataRender,
+    x: 'x',
+    y: 'y',
+    categories: ['y', 'y1', 'y2', 'y3'],
+    sortKey: 'y',
+    sortOrder: 'descending',
+  },
+  tooltip: {
+    ...baseConfig.tooltip,
+    active: true,
+    headerActive: true,
+    offsetX: -8,
+    offsetY: 25,
+    absoluteValue: true,
+    caretPosition: 'left',
+    format: '%1$s: %2$s%%',
+  },
+  labels: {
+    ...baseConfig.labels,
+    active: true,
+    labelPositionDX: 0,
+    labelPositionDY: 5,
+    labelCutoff: 2,
+    labelUnit: '',
+    labelUnitPosition: 'start',
+    abbreviateValue: true,
+    absoluteValue: true,
+    toFixedDecimal: 0,
+    labelPositionBar: 'center',
+    // customLabelFormat: function (d) {
+    //   return d.y > 1 ? `${d.y.toLocaleString()}%` : `<1%`;
+    // },
+  },
+  legend: {
+    ...baseConfig.legend,
+    orientation: 'row',
+    active: true,
+    borderStroke: 'white',
+    offsetX: 20,
+    offsetY: 40,
+  },
+  dependentAxis: {
+    ...baseConfig.dependentAxis,
+    label: '',
+    active: false,
+    domain: [-10, 20],
+    domainPadding: 0,
+    tickCount: 8,
+    tickUnit: '%',
+    tickUnitPosition: 'end',
+    showZero: true,
+    abbreviateTicks: true,
+    abbreviateTicksDecimals: 0,
+    tickValues: undefined,
+    grid: {
+      ...baseConfig.dependentAxis.grid,
+      strokeWidth: 1,
+      strokeOpacity: 0,
+      strokeDasharray: '5,2',
+    },
+    ticks: {
+      ...baseConfig.dependentAxis.ticks,
+      strokeWidth: 1,
+    },
+    tickLabels: {
+      ...baseConfig.dependentAxis.tickLabels,
+      verticalAnchor: 'middle',
+      textAnchor: 'middle',
+    },
+    axisLabel: {
+      ...baseConfig.dependentAxis.axisLabel,
+      padding: 20,
+    },
+  },
+  independentAxis: {
+    ...baseConfig.independentAxis,
+    label: '',
+    scale: 'linear',
+    active: true,
+    domain: undefined,
+    showZero: true,
+    tickValues: undefined,
+    tickCount: 5,
+    tickUnitPosition: 'end',
+    abbreviateTicks: true,
+    abbreviateTicksDecimals: 2,
+    ticks: {
+      ...baseConfig.independentAxis.ticks,
+      size: 0,
+    },
+    tickLabels: {
+      ...baseConfig.independentAxis.tickLabels,
+      angle: 0,
+      textAnchor: 'middle',
+      verticalAnchor: 'middle',
+      dx: 0,
+      dy: 0,
+    },
+    axisLabel: {
+      ...baseConfig.independentAxis.axisLabel,
+      padding: 100,
+    },
+    grid: {
+      ...baseConfig.independentAxis.grid,
+      strokeWidth: 1,
+      strokeOpacity: 0,
+      strokeDasharray: '5,2',
+    },
+    axis: {
+      ...baseConfig.independentAxis.axis,
+      strokeWidth: 0,
+    },
+  },
+  voronoi: {
+    ...baseConfig.voronoi,
+    active: false,
+  },
+  divergingBar: {
+    ...baseConfig.divergingBar,
+    positiveCategories: ['Agree', 'Strongly Agree'],
+    negativeCategories: ['Disagree'],
+    neutralBar: {
+      ...baseConfig.divergingBar.neutralBar,
+      active: true,
+      category: 'Neither',
+    },
+  },
+}
+
+export default divergingBarVerticalConfig

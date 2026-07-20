@@ -1,0 +1,141 @@
+import { baseConfig } from '@prc/charting-utilities';
+import { BaseConfig as BaseConfigType } from '@prc/charting-utilities';
+import * as palettes from '@prc/charting-utilities';
+const verticalBarConfig: BaseConfigType = {
+	...baseConfig,
+	layout: {
+		...baseConfig.layout,
+		type: 'bar',
+		orientation: 'vertical',
+		height: 400,
+		width: 600,
+		padding: { top: 50, bottom: 100, left: 70, right: 20 },
+		horizontalRules: true,
+	},
+	metadata: {
+		...baseConfig.metadata,
+		active: true,
+		title: 'Vert bars 💪Vert bars 💪Vert bars 💪',
+		subtitle: 'Stonks',
+		note: "Note: Hi here is my note. Hope you're well",
+		source: '<p>Source: <a href="#">Spring 2018 Global Attitudes Survey</a>.</p><p>New line</p>',
+	},
+	colors: [...palettes.general],
+	dataRender: {
+		...baseConfig.dataRender,
+		x: 'x',
+		y: 'y',
+		categories: ['y'],
+		sortKey: 'x',
+		sortOrder: 'descending',
+	},
+	tooltip: {
+		...baseConfig.tooltip,
+		active: true,
+		headerActive: true,
+		caretPosition: 'left',
+		format: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. %1$s: %2$s',
+	},
+	labels: {
+		...baseConfig.labels,
+		active: true,
+		labelPositionDX: 0,
+		labelPositionDY: 0,
+		labelCutoff: 40,
+		labelUnit: '',
+		labelUnitPosition: 'start',
+		abbreviateValue: true,
+		toFixedDecimal: 0,
+		labelPositionBar: 'outside',
+		textAnchor: 'middle',
+		// customLabelFormat: function (d) {
+		//   return d.y > 1 ? `${d.y.toLocaleString()}%` : `<1%`;
+		// },
+	},
+	legend: {
+		...baseConfig.legend,
+		orientation: 'row',
+		active: true,
+		borderStroke: 'black',
+		offsetX: 100,
+		offsetY: 40,
+		title: 'Legend',
+	},
+	dependentAxis: {
+		...baseConfig.dependentAxis,
+		label: 'Howdy',
+		active: true,
+		domain: [0, 100],
+		domainPadding: 0,
+		tickCount: 10,
+		tickUnit: '$',
+		tickUnitPosition: 'start',
+		showZero: true,
+		abbreviateTicks: true,
+		abbreviateTicksDecimals: 2,
+		tickValues: undefined,
+		grid: {
+			...baseConfig.dependentAxis.grid,
+			strokeWidth: 1,
+			strokeOpacity: 1,
+			strokeDasharray: '.3,6',
+		},
+		ticks: {
+			...baseConfig.dependentAxis.ticks,
+			strokeWidth: 1,
+		},
+		axisLabel: {
+			...baseConfig.dependentAxis.axisLabel,
+			padding: 30,
+		},
+	},
+	independentAxis: {
+		...baseConfig.independentAxis,
+		label: 'YOOOO',
+		scale: 'linear',
+		dateFormat: '%b %Y',
+		active: true,
+		domain: undefined,
+
+		showZero: true,
+		tickValues: undefined,
+		tickCount: 5,
+		tickUnitPosition: 'end',
+		abbreviateTicks: false,
+		abbreviateTicksDecimals: 2,
+		ticks: {
+			...baseConfig.independentAxis.ticks,
+			strokeWidth: 0,
+			size: 0,
+		},
+		tickLabels: {
+			...baseConfig.independentAxis.tickLabels,
+			angle: 0,
+			textAnchor: 'middle',
+			verticalAnchor: 'start',
+			dx: 0,
+			dy: 5,
+		},
+		axisLabel: {
+			...baseConfig.independentAxis.axisLabel,
+			padding: 100,
+		},
+		grid: {
+			...baseConfig.independentAxis.grid,
+			strokeWidth: 1,
+			strokeOpacity: 0,
+			strokeDasharray: '5,2',
+		},
+		axis: {
+			...baseConfig.independentAxis.axis,
+			strokeWidth: 1,
+			stroke: '#13398c',
+		},
+	},
+	voronoi: {
+		...baseConfig.voronoi,
+		active: false,
+	},
+};
+
+export default verticalBarConfig;

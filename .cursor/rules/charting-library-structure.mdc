@@ -1,0 +1,41 @@
+---
+description: Layer-based folder taxonomy for prc-charting-library src/lib/
+globs: plugins/prc-charting-library/src/lib/**/*
+---
+
+# Charting library source structure
+
+`src/lib/` is organized by **dependency layer** (low → high):
+
+`primitives` → `store` → `animation` / `labels` → `overlays` → `charts` → `controller`
+
+Also: `presets/` (example configs), `data/maps/` (static topology).
+
+## Where files belong
+
+| Folder | Put here if… |
+| --- | --- |
+| `primitives/` | Reusable low-level SVG/React primitive, no chart-domain knowledge |
+| `store/` | Global chart reactive state (`useChartStore`) |
+| `animation/` | Transition engine, `Animated*`, animation providers/hooks |
+| `labels/` | Label components/hooks; leader-line React in `labels/leader-line/` (engine in `@prc/charting-utilities/labelLayout/`) |
+| `overlays/` | Presentational chrome (legend, tooltip, axes, annotations, drawings) |
+| `charts/` | D3 mark renderer for a chart type; geo marks in `charts/maps/` |
+| `controller/` | `ChartBuilder*` orchestration (top compositor) |
+| `presets/` | Static example configs (dev only) |
+| `data/maps/` | GeoJSON/topology data + generation scripts |
+
+## Admission rules
+
+1. Default to the folder matching **rendering role / layer**.
+2. **Top-level sibling** (`labels/`, `animation/`) only for a cohesive **engine-backed subsystem** — not because something is "drawn on top."
+3. **Nested subfolder** when a cluster exceeds ~5–6 files or has a distinct concern (`engine/` vs React, maps vs cartesian).
+4. **Label layout engine** lives in `@prc/charting-utilities/labelLayout/` — not in this plugin.
+5. Re-export barrels use **explicit named exports** — never `export *` (avoids `Text` / `wordWrap` symbol clashes).
+
+## Dependency direction
+
+- Lower layers must not import higher layers (e.g. `overlays/` must not import `charts/`).
+- `controller/` is the only layer that may import everything below it.
+
+Each folder has a `README.md` with its specific import rules.

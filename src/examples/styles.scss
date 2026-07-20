@@ -1,0 +1,111 @@
+$thunder: #231f20;
+$gallery: #eee;
+$white: #ffffff;
+$franklin: franklin-gothic-urw, Verdana, Geneva, sans-serif;
+$abril: abril-text, Georgia, Times New Roman, Times, serif;
+// add cb wrapper
+body {
+  margin: 0;
+  padding: 0;
+  font-family: $franklin;
+  font-size: 16px;
+  line-height: 150%;
+  color: $thunder;
+  background-color: $white;
+  width: 100%;
+}
+.cb__text-wrapper,
+.cb__chart {
+  font-family: $franklin;
+  font-size: 16px;
+  line-height: 150%;
+  color: $thunder;
+  background-color: $white;
+  @media (prefers-color-scheme: dark) {
+    color: #fff;
+    background-color: #1e1e1e;
+  }
+}
+
+.flex {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.flex > div {
+  flex: 1 0 auto;
+}
+
+.cb__text-wrapper {
+  margin: 20px 0;
+}
+
+.cb__title {
+  font-size: 18px;
+  line-height: 110%;
+  font-family: $franklin;
+  font-weight: 700;
+  color: $thunder;
+  margin-bottom: 10px;
+  @media (prefers-color-scheme: dark) {
+    color: #fff;
+  }
+}
+
+.cb__subtitle {
+  font-size: 14px;
+  line-height: 130%;
+  color: rgba(100, 100, 100, 0.7);
+  font-style: italic;
+  font-family: $abril;
+  margin-bottom: 20px;
+  @media (prefers-color-scheme: dark) {
+    color: rgba(255, 255, 255, 0.7);
+    a {
+      color: #809fff;
+    }
+  }
+}
+
+.cb__note {
+  font-size: 12px;
+  line-height: 125%;
+  color: rgba(100, 100, 100, 0.6);
+  font-family: $franklin;
+  margin-top: 20px;
+  @media (prefers-color-scheme: dark) {
+    color: rgba(255, 255, 255, 0.6);
+    a {
+      color: #809fff;
+    }
+  }
+}
+
+.cb__note ~ .cb__note {
+  margin-top: auto;
+}
+
+.cb__tag {
+  font-size: 12px;
+  line-height: 100%;
+  letter-spacing: 0.2px;
+  font-weight: 500;
+  font-family: $franklin;
+  color: $thunder;
+  margin-top: 10px;
+  @media (prefers-color-scheme: dark) {
+    color: #fff;
+  }
+}
+
+// couple of visx overrides
+.visx-legend-item {
+  line-height: 110%;
+}
+
+.visx-columns,
+.visx-rows {
+  .visx-line {
+    stroke-linecap: round;
+  }
+}

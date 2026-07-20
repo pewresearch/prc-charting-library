@@ -1,0 +1,54 @@
+{
+	"compilerOptions": {
+		// Output configuration
+		"outDir": "./dist",
+		"noEmit": true,
+		"sourceMap": true,
+		"removeComments": false,
+
+		// Language and environment
+		"target": "es6",
+		"lib": ["dom", "dom.iterable", "esnext"],
+
+		// Module resolution
+		"module": "esnext",
+		"moduleResolution": "node",
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+
+		// JavaScript support
+		"allowJs": true,
+		"skipLibCheck": true,
+
+		// React/JSX configuration
+		"jsx": "react-jsx",
+
+		"baseUrl": ".",
+		"paths": {
+			"@prc/charting-utilities": ["../prc-scripts/includes/scripts/src/@prc/charting-utilities/index.ts"]
+		},
+
+		// Type checking
+		"strict": true,
+		"noImplicitAny": true,
+		"forceConsistentCasingInFileNames": true,
+		"noFallthroughCasesInSwitch": true,
+		"noEmitOnError": true,
+
+		// Advanced options
+		"downlevelIteration": true
+	},
+	"include": ["./src/**/*", "./src/**/*.json"],
+	"exclude": [
+		"node_modules",
+		"build",
+		"dist",
+		"**/*.stories.ts",
+		"**/*.stories.tsx",
+		"./src/lib/data/maps/usa/node.js",
+		"./src/lib/presets/**/*",
+		"./src/preact-compat.d.ts"
+	]
+}
