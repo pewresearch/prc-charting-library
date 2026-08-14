@@ -16,6 +16,7 @@ import {
 	getTooltipHeaderFormat,
 	getLocalPoint,
 	getSharedProps,
+	getGroupColorDomain,
 	newDateByFormat,
 	getLabelFill,
 	useRegressionLine,
@@ -187,16 +188,16 @@ const Scatter = () => {
 
 	// When groupBreaksCategory is set, unique values of that column drive color grouping.
 	// This works for point-based charts (scatter, bee-swarm, bubble) where there are no
-	// visual break lines — color is the sole grouping cue.
-	const groupColorDomain = useMemo(() => {
-		if (!dataRender.groupBreaksCategory) return [];
-		const values = new Set<string>();
-		flattenedData.forEach((d: FlatData) => {
-			const v = d[dataRender.groupBreaksCategory!];
-			if (v !== null && v !== undefined && v !== '') values.add(String(v));
-		});
-		return Array.from(values).sort();
-	}, [dataRender.groupBreaksCategory, flattenedData]);
+	// visual break lines — color is the sole grouping cue. Domain order must match
+	// ColorSorter / legend labels (first-seen, group order, then legend) — not A–Z.
+	const groupColorDomain = useMemo(
+		() =>
+			getGroupColorDomain(flattenedData, dataRender.groupBreaksCategory, {
+				groupOrder: dataRender.groupBreaksCategoryValues,
+				legendCategories: legend.categories,
+			}),
+		[dataRender.groupBreaksCategory, dataRender.groupBreaksCategoryValues, flattenedData, legend.categories]
+	);
 
 	const colorScale = useMemo(
 		() =>
@@ -232,19 +233,10 @@ const Scatter = () => {
 	);
 
 	// Pre-compute legend domain to avoid nested ternary in JSX.
-	// When groupBreaksCategory is active, prefer a user-saved custom order in
-	// legend.categories (same items, different order) over the raw derived domain.
+	// Grouped point charts share colorScale.domain so palette chips, points,
+	// and legend swatches stay aligned.
 	const legendDomain = useMemo(() => {
 		if (dataRender.groupBreaksCategory) {
-			// If the user has saved a custom legend order that matches the current
-			// group values (same set, possibly different order), honour it.
-			if (legend.categories.length > 0 && legend.categories.length === groupColorDomain.length) {
-				const sortedSaved = [...legend.categories].sort();
-				const sortedDerived = [...groupColorDomain].sort();
-				if (JSON.stringify(sortedSaved) === JSON.stringify(sortedDerived)) {
-					return legend.categories;
-				}
-			}
 			return groupColorDomain;
 		}
 		if (legend.categories.length > 0) return legend.categories;

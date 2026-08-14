@@ -21,6 +21,7 @@ import {
 	getCustomLabelText,
 	getCustomTooltip,
 	getFlattenedData,
+	getGroupColorDomain,
 	getGroupValue,
 	getLocalPoint,
 	getMaxAbsColumnValue,
@@ -174,19 +175,14 @@ const BeeSwarm = () => {
 		[innerHeight]
 	);
 
-	const groupColorDomain = useMemo(() => {
-		if (!dataRender.groupBreaksCategory) {
-			return [];
-		}
-		const values = new Set<string>();
-		filteredData.forEach((row) => {
-			const value = row[dataRender.groupBreaksCategory!];
-			if (value !== null && value !== undefined && value !== '') {
-				values.add(String(value));
-			}
-		});
-		return Array.from(values).sort();
-	}, [dataRender.groupBreaksCategory, filteredData]);
+	const groupColorDomain = useMemo(
+		() =>
+			getGroupColorDomain(filteredData, dataRender.groupBreaksCategory, {
+				groupOrder: dataRender.groupBreaksCategoryValues,
+				legendCategories: legend.categories,
+			}),
+		[dataRender.groupBreaksCategory, dataRender.groupBreaksCategoryValues, filteredData, legend.categories]
+	);
 
 	const colorScale = useMemo(
 		() =>
@@ -199,13 +195,6 @@ const BeeSwarm = () => {
 
 	const legendDomain = useMemo(() => {
 		if (dataRender.groupBreaksCategory) {
-			if (legend.categories.length > 0 && legend.categories.length === groupColorDomain.length) {
-				const sortedSaved = [...legend.categories].sort();
-				const sortedDerived = [...groupColorDomain].sort();
-				if (JSON.stringify(sortedSaved) === JSON.stringify(sortedDerived)) {
-					return legend.categories;
-				}
-			}
 			return groupColorDomain;
 		}
 		if (legend.categories.length > 0) {
@@ -678,12 +667,14 @@ const BeeSwarm = () => {
 							dangerouslySetInnerHTML={{
 								__html: customTooltip.body
 									? customTooltip.body
-									: getTooltipFormat({
+									: getTooltipFormat(
+											{
 												x: tooltipData.data.x,
 												y: getValue(tooltipData.data),
 												category: getCategoryKey(tooltipData.data),
 												color: getPointColor(tooltipData.data),
-										data: tooltipData.data,},
+												data: tooltipData.data,
+											},
 											tooltip,
 											dataRender
 										),
