@@ -9,6 +9,7 @@ These regional files include **only the arcs (borders) needed** for the countrie
 ## Files
 
 - **countries-50m.json** (98.8KB) - Full world map with all countries
+- **countries-locator.json** (~416KB) - Low-res full-world topology for small orthographic locator globes (`map.globe.topology: 'locator'`). Broader country coverage than 50m (includes island nations). Source: author-supplied `low_res.json.gz`, normalized so each geometry has ISO-numeric `id` and `properties.name`. Kosovo is remapped from Natural Earth `-99` → `412`. French overseas territories that the source labels with sovereign France `250` are remapped to their territory codes so region membership stays correct: French Guiana `254`, Guadeloupe `312`, Martinique `474`, Réunion `638`. Disputed/non-ISO features are dropped.
 
 ### africa-50m.json (20.8KB, 78.9% reduction)
 **Region:** Africa (Broad2019)

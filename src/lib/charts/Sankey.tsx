@@ -746,6 +746,7 @@ const SankeyChart = () => {
 									y: tooltipData.value,
 									category: sankeyConfig.valueKey,
 									color: tooltipData.color,
+									data: tooltipData as unknown as Record<string, unknown>,
 								},
 								tooltip,
 								dataRender

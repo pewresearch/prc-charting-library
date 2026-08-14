@@ -4,12 +4,15 @@ import {
 	DataContext,
 	NET_VALUE_CATEGORY_NEGATIVE,
 	NET_VALUE_CATEGORY_POSITIVE,
+	buildChartLabelId,
+	getCustomLabel,
+	getCustomLabelText,
 	getLabelFormat,
 	getLabelFill,
+	hasAuthorLabelOverride,
 } from '@prc/charting-utilities';
 import { useContext, useMemo } from 'react';
 import { AnimatedBarLabel } from '../animation';
-import { buildChartLabelId, hasAuthorLabelOverride } from '@prc/charting-utilities';
 import { getDeclutterOffset, useLabelDeclutter } from './useLabelDeclutter';
 
 export type NetValueLabelItem = {
@@ -29,6 +32,10 @@ export function formatNetValueLabel(d: FlatData, sideConfig: NetValueSide): stri
 		return '';
 	}
 	return getLabelFormat(raw, sideConfig.category, sideConfig, null);
+}
+
+function getNetValueLabelContent(d: FlatData, sideConfig: NetValueSide, categoryKey: string): string {
+	return getCustomLabelText(d, categoryKey) || getCustomLabel(d, categoryKey) || formatNetValueLabel(d, sideConfig);
 }
 
 type NetValueLabelsProps = {
@@ -76,7 +83,7 @@ export function NetValueLabels({ items, side, netValues, labelProps, innerWidth,
 		}
 		return items
 			.map((item, i) => {
-				const label = formatNetValueLabel(item.dataPoint, sideConfig);
+				const label = getNetValueLabelContent(item.dataPoint, sideConfig, categoryKey);
 				if (!label) {
 					return null;
 				}
@@ -109,6 +116,7 @@ export function NetValueLabels({ items, side, netValues, labelProps, innerWidth,
 			anchorStrengthY: isVertical ? 0.5 : undefined,
 			innerWidth,
 			innerHeight,
+			omitWithin: labels?.declutterOmitWithin,
 		},
 		!!(isActive && labels?.autoDeclutter && items.length >= 2)
 	);
@@ -120,17 +128,21 @@ export function NetValueLabels({ items, side, netValues, labelProps, innerWidth,
 	return (
 		<g role="presentation">
 			{items.map((item, i) => {
-				const label = formatNetValueLabel(item.dataPoint, sideConfig);
+				const label = getNetValueLabelContent(item.dataPoint, sideConfig, categoryKey);
 				if (!label) {
 					return null;
 				}
+				const defaultLabel = formatNetValueLabel(item.dataPoint, sideConfig);
 				const labelId = buildChartLabelId(['net-value', side, item.dataPoint.x, i]);
-				const { dx, dy } = getDeclutterOffset(
+				const { dx, dy, hidden } = getDeclutterOffset(
 					declutterOffsets,
 					labelId,
 					sideConfig.labelPositionDX,
 					sideConfig.labelPositionDY
 				);
+				if (hidden) {
+					return null;
+				}
 				return (
 					<AnimatedBarLabel
 						key={`net-value-${side}-${item.dataPoint.x}-${i}`}
@@ -140,7 +152,7 @@ export function NetValueLabels({ items, side, netValues, labelProps, innerWidth,
 						category={categoryKey}
 						defaultDx={dx}
 						defaultDy={dy}
-						defaultLabel={label}
+						defaultLabel={defaultLabel}
 						chartInnerWidth={innerWidth}
 						chartInnerHeight={innerHeight}
 						textAnchor={item.textAnchor}

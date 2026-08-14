@@ -3,8 +3,14 @@ export { Title, Subtitle, SourceNote, Tag, AnnotationsLayer, Annotation } from '
 export { StyledLegend } from './Legend';
 export { StyledTooltip } from './Tooltip';
 export { PlotBands } from './PlotBands';
+export { Crosshair } from './Crosshair';
+export { UnifiedTooltipRows } from './UnifiedTooltipRows';
+export { useUnifiedTooltip } from './useUnifiedTooltip';
 export { BreakLine } from './BreakLine';
+export { ZeroBaseline } from './ZeroBaseline';
 export { AlignmentGuides } from './AlignmentGuides';
 export { DrawingsLayer } from './DrawingsLayer';
 export { ClickableTicks } from './ClickableTicks';
 export { ClickableLegend } from './ClickableLegend';
+export { getPositioningScale, scalePositionToDisplay, scalePositionToLayout } from './getPositioningScale';
+export type { PositioningContext, PositioningScale, GetPositioningScaleArgs } from './getPositioningScale';

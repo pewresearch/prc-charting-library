@@ -14,6 +14,10 @@ import {
 	resolveCategoryOpacity,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
+	getLinearValueDataExtent,
+	hasExplicitAxisDomain,
+	resolveLinearScaleDomain,
+	resolveScaleNice,
 } from '@prc/charting-utilities';
 import {
 	getChartDimensions,
@@ -25,6 +29,7 @@ import {
 	getSharedProps,
 	getFlattenedData,
 	getGroupedData,
+	createGroupBandScale,
 	getGroupPositioningHorizontal,
 } from '@prc/charting-utilities';
 import { DiffColumn } from './DiffColumn';
@@ -152,11 +157,16 @@ const ExplodedBar = () => {
 	const dependentScale = useMemo(
 		() =>
 			scaleLinear({
-				domain: dependentAxis.domain,
+				// Null/auto domains fall back to the data extent; visx would
+				// otherwise silently keep d3's default [0, 1].
+				domain: resolveLinearScaleDomain(
+					dependentAxis.domain,
+					getLinearValueDataExtent(flattenedData, dataRender.categories)
+				),
 				range: [0, columnContentWidth],
-				nice: true,
+				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[columnContentWidth, dependentAxis.domain]
+		[columnContentWidth, dependentAxis.domain, dependentAxis.nice, flattenedData, dataRender.categories]
 	);
 	const colorScale = useMemo(
 		() =>
@@ -257,17 +267,17 @@ const ExplodedBar = () => {
 									const { group, data, startY, height } = groupPos;
 
 									// Create scales for this group:
-									const groupScale = scaleBand<string>({
-										domain: data.map(getIndependentValue),
-										range: [startY + height, startY],
-										padding: bar.barPadding,
-									});
+									const groupScale = createGroupBandScale(
+										data.map(getIndependentValue),
+										[startY + height, startY],
+										bar.barPadding
+									);
 
-									const gridScale = scaleBand<string>({
-										domain: data.map(getIndependentValue),
-										range: [height, 0],
-										padding: bar.barPadding,
-									});
+									const gridScale = createGroupBandScale(
+										data.map(getIndependentValue),
+										[height, 0],
+										bar.barPadding
+									);
 
 									return (
 										<Group key={`group-${groupIndex}-${group}-${category}`}>
@@ -501,11 +511,11 @@ const ExplodedBar = () => {
 											const { data, startY, height } = groupPos;
 
 											// Create individual scale for this group's axis
-											const groupScale = scaleBand<string>({
-												domain: data.map(getIndependentValue),
-												range: [startY + height, startY],
-												padding: bar.barPadding,
-											});
+											const groupScale = createGroupBandScale(
+												data.map(getIndependentValue),
+												[startY + height, startY],
+												bar.barPadding
+											);
 
 											return (
 												<AxisLeft
@@ -539,11 +549,11 @@ const ExplodedBar = () => {
 
 								// Create individual scale for this group with relative positioning (0 to height)
 								// since the Group is already positioned at startY
-								const groupScale = scaleBand<string>({
-									domain: data.map(getIndependentValue),
-									range: [height, 0],
-									padding: bar.barPadding,
-								});
+								const groupScale = createGroupBandScale(
+									data.map(getIndependentValue),
+									[height, 0],
+									bar.barPadding
+								);
 
 								// DiffColumn positions itself internally at innerWidth + marginLeft
 								// So we position the Group at padding.left and pass innerWidth as the distance
@@ -639,11 +649,11 @@ const ExplodedBar = () => {
 							{groupPositioning.map((groupPos, groupIndex) => {
 								const { data, startY, height } = groupPos;
 
-								const groupScale = scaleBand<string>({
-									domain: data.map(getIndependentValue),
-									range: [startY + height, startY],
-									padding: bar.barPadding,
-								});
+								const groupScale = createGroupBandScale(
+									data.map(getIndependentValue),
+									[startY + height, startY],
+									bar.barPadding
+								);
 
 								return (
 									<Group key={`draggable-labels-group-${groupIndex}`}>
@@ -814,6 +824,7 @@ const ExplodedBar = () => {
 													fallback: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
+												data: tooltipData,
 											},
 											tooltip,
 											dataRender

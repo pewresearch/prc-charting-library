@@ -85,6 +85,57 @@ function lerp(from: number, target: number, t: number): number {
 	return from + (target - from) * t;
 }
 
+/** Plot channels used by lines (`x`/`y`) and areas (`x`/`y0`/`y1`). */
+const GLIDE_BOUND_KEYS = ['x', 'y', 'y0', 'y1'] as const;
+
+/**
+ * True when any previous point lies outside the new points' axis-aligned
+ * bounds. That happens on container restack/resize (plot shrinks) — lerping
+ * from the old wider pixel coords would paint mid-tween marks outside the
+ * new panel/plot. Snap instead of glide in that case.
+ *
+ * Must include area `y0`/`y1` (not only `y`) so AnimatedArea and
+ * AnimatedLinePath make the same snap/glide decision and stay locked.
+ */
+function fromPointsOutsideToBounds<T extends GlidePoint>(from: T[], to: T[]): boolean {
+	if (!from.length || !to.length) {
+		return false;
+	}
+	const bounds: Partial<Record<(typeof GLIDE_BOUND_KEYS)[number], { min: number; max: number }>> = {};
+	for (const point of to) {
+		for (const key of GLIDE_BOUND_KEYS) {
+			const value = point[key];
+			if (typeof value !== 'number' || Number.isNaN(value)) {
+				continue;
+			}
+			const current = bounds[key];
+			if (!current) {
+				bounds[key] = { min: value, max: value };
+			} else {
+				current.min = Math.min(current.min, value);
+				current.max = Math.max(current.max, value);
+			}
+		}
+	}
+	if (!bounds.x) {
+		return false;
+	}
+	const pad = 1;
+	for (const point of from) {
+		for (const key of GLIDE_BOUND_KEYS) {
+			const value = point[key];
+			const extent = bounds[key];
+			if (typeof value !== 'number' || Number.isNaN(value) || !extent) {
+				continue;
+			}
+			if (value < extent.min - pad || value > extent.max + pad) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 /**
  * Share a single spring across a series' path and its markers so they glide
  * together on data changes (Option A).
@@ -108,7 +159,8 @@ export function usePointGlide<T extends GlidePoint>(
 	const toPoints = points;
 
 	const sameLength = fromPoints.length === toPoints.length;
-	const updateImmediate = update.immediate || !sameLength;
+	const layoutShrink = sameLength && fromPointsOutsideToBounds(fromPoints, toPoints);
+	const updateImmediate = update.immediate || !sameLength || layoutShrink;
 
 	// Identity key so the effect only fires when the geometry actually moves.
 	const pointsKey = useMemo(

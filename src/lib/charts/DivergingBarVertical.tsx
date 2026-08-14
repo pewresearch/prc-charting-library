@@ -18,11 +18,16 @@ import {
 	positionBarLabel,
 	getFlattenedData,
 	getGroupedData,
+	createGroupBandScale,
 	getGroupPositioningVertical,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
+	getLinearValueDataExtent,
+	hasExplicitAxisDomain,
+	resolveLinearScaleDomain,
+	resolveScaleNice,
 } from '@prc/charting-utilities';
 import {
 	StyledTooltip,
@@ -149,11 +154,26 @@ const DivergingBarVertical = () => {
 	const dependentScale = useMemo(
 		() =>
 			scaleLinear({
-				domain: dependentAxis.domain,
+				// Null/auto domains fall back to the signed stacked extent;
+				// visx would otherwise silently keep d3's default [0, 1].
+				domain: resolveLinearScaleDomain(
+					dependentAxis.domain,
+					getLinearValueDataExtent(flattenedData, dataRender.categories, {
+						stacked: true,
+						negativeCategories: divergingBar.negativeCategories,
+					})
+				),
 				range: [0, innerHeight],
-				nice: true,
+				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[innerHeight, dependentAxis.domain]
+		[
+			innerHeight,
+			dependentAxis.domain,
+			dependentAxis.nice,
+			flattenedData,
+			dataRender.categories,
+			divergingBar.negativeCategories,
+		]
 	);
 	const colorScale = useMemo(
 		() =>
@@ -245,17 +265,17 @@ const DivergingBarVertical = () => {
 							const { group, data, startX, width, breakWidth } = groupPos;
 
 							// Create scales for this group
-							const groupScale = scaleBand<string>({
-								domain: data.map(getIndependentValue),
-								range: [startX, startX + width],
-								padding: barConfig.barGroupPadding,
-							});
+							const groupScale = createGroupBandScale(
+								data.map(getIndependentValue),
+								[startX, startX + width],
+								barConfig.barGroupPadding
+							);
 
-							const gridScale = scaleBand<string>({
-								domain: data.map(getIndependentValue),
-								range: [0, width],
-								padding: barConfig.barGroupPadding,
-							});
+							const gridScale = createGroupBandScale(
+								data.map(getIndependentValue),
+								[0, width],
+								barConfig.barGroupPadding
+							);
 
 							return (
 								<Group key={`group-${groupIndex}-${group}`}>
@@ -387,7 +407,7 @@ const DivergingBarVertical = () => {
 																	};
 																	showTooltip({
 																		tooltipData: {
-																			x: barData.x,
+																			...barData,
 																			y: barValue,
 																			category,
 																			tooltip: customTooltip,
@@ -406,7 +426,7 @@ const DivergingBarVertical = () => {
 																	if (tooltipTimeout) clearTimeout(tooltipTimeout);
 																	showTooltip({
 																		tooltipData: {
-																			x: barData.x,
+																			...barData,
 																			y: barValue,
 																			category,
 																			tooltip: customTooltip,
@@ -557,11 +577,11 @@ const DivergingBarVertical = () => {
 									const { data, startX, width } = groupPos;
 
 									// Create individual scale for this group's axis
-									const groupScale = scaleBand<string>({
-										domain: data.map(getIndependentValue),
-										range: [startX, startX + width],
-										padding: barConfig.barGroupPadding,
-									});
+									const groupScale = createGroupBandScale(
+										data.map(getIndependentValue),
+										[startX, startX + width],
+										barConfig.barGroupPadding
+									);
 
 									return (
 										<AxisBottom
@@ -670,6 +690,7 @@ const DivergingBarVertical = () => {
 													fallback: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
+												data: tooltipData,
 											},
 											tooltip,
 											dataRender

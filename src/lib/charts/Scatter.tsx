@@ -22,8 +22,14 @@ import {
 	useRegressionLines,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveNodeShapeColors,
 	legendCategoryShapeStyle,
+	getMaxAbsColumnValue,
+	getMinPositiveColumnValue,
+	createPointRadiusScale,
+	resolvePointRadius,
 } from '@prc/charting-utilities';
+import { useLineFamilyScales } from '../scales';
 import {
 	StyledTooltip,
 	StyledLegend,
@@ -31,12 +37,13 @@ import {
 	DrawingsLayer,
 	ClickableTicks,
 	ClickableLegend,
+	ZeroBaseline,
 } from '../overlays';
 import { AnimatedCircle, AnimatedLinePath, AnimatedLabel, TransitionProvider } from '../animation';
-import { DraggableLabel } from '../labels';
 import {
 	buildScatterLabelId,
 	buildScatterLabelInputs,
+	DraggableLabel,
 	getDeclutterOffset,
 	LeaderLineProvider,
 	LeaderLineUnderlay,
@@ -49,10 +56,9 @@ import { Group } from '@visx/group';
 import styled from '@emotion/styled';
 import { GridRows, GridColumns } from '@visx/grid';
 import { AxisBottom, AxisLeft } from '@visx/axis';
-import { scaleTime, scaleLinear, scaleOrdinal } from '@visx/scale';
+import { scaleOrdinal } from '@visx/scale';
 import { useTooltip } from '@visx/tooltip';
 import { voronoi, VoronoiPolygon } from '@visx/voronoi';
-import { max, extent } from 'd3-array';
 import { LegendOrdinal } from '@visx/legend';
 
 // Standalone scatter points (PRC-17 slice 3g). Tooltip halos stay static visx
@@ -110,6 +116,8 @@ const Scatter = () => {
 		[data]
 	);
 
+	const sizeCategory = nodes.sizeCategory || '';
+
 	// to render the voronoi, we need to flatten the data further,
 	// assigning each point its own polygon, also filtering out null, udnefined, empty values
 	const voronoiData = useMemo(
@@ -121,6 +129,7 @@ const Scatter = () => {
 						if (d[c]) {
 							const { body: _sctTip, header: _sctHdr } = getCustomTooltip(d, c);
 							return {
+								...d,
 								x: d.x,
 								y: d[c],
 								category: c,
@@ -130,13 +139,15 @@ const Scatter = () => {
 								label: d.__labels?.[c] ? d.__labels[c] : '',
 								tooltip: _sctTip,
 								tooltipHeader: _sctHdr,
+								// Preserve size column so tooltip halos can resolve variable radius.
+								...(sizeCategory ? { [sizeCategory]: d[sizeCategory] } : {}),
 							};
 						}
 					})
 				)
 				.flat()
 				.filter(Boolean),
-		[dataRender, flattenedData]
+		[dataRender, flattenedData, sizeCategory]
 	);
 
 	// Combined (single) regression — used when perGroupBreak is false.
@@ -164,36 +175,16 @@ const Scatter = () => {
 
 	const getDependentValue = useCallback((d: FlatData) => d[dataRender.y] as number, [dataRender.y]);
 
-	// SCALES, VORONOI
-	const timeScale = useMemo(
-		() =>
-			scaleTime({
-				domain: extent(flattenedData, getIndependentValue) as [Date, Date],
-				range: [0, innerWidth],
-			}),
-		[innerWidth, flattenedData, getIndependentValue]
-	);
-	const linearScale = useMemo(
-		() =>
-			scaleLinear({
-				domain: independentAxis.domain
-					? independentAxis.domain
-					: [0, max(flattenedData, getIndependentValue) || 0],
-				range: [0, innerWidth],
-			}),
-		[innerWidth, independentAxis, flattenedData, getIndependentValue]
-	);
+	const { independentScale, dependentScale } = useLineFamilyScales({
+		independentAxis,
+		dependentAxis,
+		innerWidth,
+		innerHeight,
+		flattenedData,
+		getIndependentValue,
+		getDependentValue,
+	});
 
-	const independentScale = independentAxis.scale === 'time' ? timeScale : linearScale;
-	const dependentScale = useMemo(
-		() =>
-			scaleLinear({
-				domain: dependentAxis.domain ? dependentAxis.domain : [0, max(flattenedData, getDependentValue) || 0],
-				range: [innerHeight, 0],
-				nice: true,
-			}),
-		[innerHeight, flattenedData, dependentAxis, getDependentValue]
-	);
 	// When groupBreaksCategory is set, unique values of that column drive color grouping.
 	// This works for point-based charts (scatter, bee-swarm, bubble) where there are no
 	// visual break lines — color is the sole grouping cue.
@@ -214,6 +205,30 @@ const Scatter = () => {
 				range: colors,
 			}),
 		[groupColorDomain, dataRender.categories, colors]
+	);
+
+	// Variable point sizing — same scaleSqrt contract as world bubble maps by
+	// default, with linear/log available via nodes.sizeScale.
+	const pointRadiusScale = useMemo(() => {
+		if (!sizeCategory) return null;
+		return createPointRadiusScale({
+			maxValue: getMaxAbsColumnValue(flattenedData, sizeCategory),
+			minValue: getMinPositiveColumnValue(flattenedData, sizeCategory),
+			minRadius: nodes.minPointSize ?? 4,
+			maxRadius: nodes.maxPointSize ?? 24,
+			scaleType: nodes.sizeScale ?? 'sqrt',
+		});
+	}, [flattenedData, sizeCategory, nodes.minPointSize, nodes.maxPointSize, nodes.sizeScale]);
+
+	const getPointRadius = useCallback(
+		(d: FlatData) =>
+			resolvePointRadius({
+				d: d as Record<string, unknown>,
+				sizeCategory,
+				pointSize: nodes.pointSize,
+				radiusScale: pointRadiusScale,
+			}),
+		[sizeCategory, nodes.pointSize, pointRadiusScale]
 	);
 
 	// Pre-compute legend domain to avoid nested ternary in JSX.
@@ -323,6 +338,7 @@ const Scatter = () => {
 			anchorStrengthY: 0.35,
 			innerWidth,
 			innerHeight,
+			omitWithin: labels.declutterOmitWithin,
 		},
 		!!(labels.active && labels.autoDeclutter)
 	);
@@ -336,6 +352,23 @@ const Scatter = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+
+	// The voronoi handler tooltips the raw flat row, while the marker handler
+	// synthesizes a payload that omits the source columns. Variable sizing needs
+	// the original row, so fall back to matching one on x/y/category.
+	const getTooltipPointRadius = useCallback(() => {
+		if (!tooltipData || !sizeCategory) return nodes.pointSize;
+		if (tooltipData[sizeCategory] !== undefined) {
+			return getPointRadius(tooltipData);
+		}
+		const source = tooltipData.category
+			? flattenedData.find(
+					(d: FlatData) =>
+						getIndependentValue(d) === tooltipData.x && d[tooltipData.category!] === tooltipData.y
+				)
+			: undefined;
+		return source ? getPointRadius(source) : nodes.pointSize;
+	}, [tooltipData, sizeCategory, flattenedData, getIndependentValue, getPointRadius, nodes.pointSize]);
 
 	// Track cursor position for better tooltip positioning
 	const [cursorPosition, setCursorPosition] = useState<{
@@ -423,6 +456,13 @@ const Scatter = () => {
 							/>
 							<GridRows {...dependentGridProps} />
 							<GridColumns {...independentGridProps} />
+							<ZeroBaseline
+								scale={dependentScale}
+								along="x"
+								length={innerWidth}
+								stroke={dependentAxis.axis.stroke}
+								strokeWidth={dependentAxis.axis.strokeWidth}
+							/>
 
 							{voronoiConfig.active &&
 								voronoiLayout
@@ -457,24 +497,27 @@ const Scatter = () => {
 								const filteredData = flattenedData.filter(
 									(d: FlatData) => d[category] || d[category] !== ''
 								);
+								// When variable sizing is on, paint largest first so smaller dots stay on top
+								// (same stacking contract as MapBubbleLayer).
+								const renderData = sizeCategory
+									? [...filteredData].sort(
+											(a: FlatData, b: FlatData) => getPointRadius(b) - getPointRadius(a)
+										)
+									: filteredData;
 								return (
 									<g key={`scatter-category-${i}`}>
-										{filteredData?.map((d: FlatData, j: number) => {
+										{renderData?.map((d: FlatData, j: number) => {
 											// Get custom shape styles (group-aware key)
 											const groupValue = getGroupValue(d, dataRender);
 											const shapeKey = generateElementKey(d.x, category, groupValue);
-											// When groupBreaksCategory is set, color is driven by the
-											// grouping column — skip stale per-point custom styles.
-											const customShapeStyles = dataRender.groupBreaksCategory
-												? {}
-												: shapes?.customStyles?.[shapeKey] || {};
+											const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
 											const categoryKey = dataRender.groupBreaksCategory
 												? String(d[dataRender.groupBreaksCategory] ?? '')
 												: category;
 											const fallbackColor = dataRender.groupBreaksCategory
 												? colorScale(categoryKey)
 												: colors[i];
-											const defaultColor = resolveCategoryColor({
+											const seriesColor = resolveCategoryColor({
 												category: categoryKey,
 												fallback: fallbackColor,
 												dataRender,
@@ -483,19 +526,24 @@ const Scatter = () => {
 												category: categoryKey,
 												dataRender,
 											});
+											const { fill: defaultFill, stroke: defaultStroke } = resolveNodeShapeColors(
+												nodes,
+												seriesColor
+											);
 
 											// Apply custom styles with fallbacks
-											const shapeFill = customShapeStyles.fill || defaultColor;
-											const shapeStroke = customShapeStyles.stroke || defaultColor;
+											const shapeFill = customShapeStyles.fill || defaultFill;
+											const shapeStroke = customShapeStyles.stroke || defaultStroke;
 											const shapeStrokeWidth =
 												customShapeStyles.strokeWidth ?? nodes.pointStrokeWidth;
 											const markOpacity = (customShapeStyles.opacity ?? 1) * categoryOpacity;
+											const pointRadius = getPointRadius(d);
 
 											return (
 												<StyledAnimatedCircle
 													key={`scatter-category-${i}-node-${j}`}
 													tabIndex={0}
-													r={nodes.pointSize}
+													r={pointRadius}
 													cx={independentScale(getIndependentValue(d)) ?? 0}
 													cy={dependentScale(d[category]) ?? 0}
 													stroke={shapeStroke}
@@ -510,7 +558,7 @@ const Scatter = () => {
 															wpEditorFunctions.shapes.onClick(
 																d,
 																category,
-																defaultColor,
+																seriesColor,
 																event.currentTarget,
 																groupValue
 															);
@@ -537,7 +585,7 @@ const Scatter = () => {
 																d[dataRender.groupBreaksCategory]
 															: tooltipData.category !== category)
 															? tooltip.deemphasizeOpacity
-															: 1
+															: (nodes.pointFillOpacity ?? 1)
 													}
 													onBlur={() => {
 														tooltipTimeout = window.setTimeout(() => {
@@ -554,7 +602,7 @@ const Scatter = () => {
 															tooltipLeft: independentScale(getIndependentValue(d)),
 															tooltipTop: dependentScale(d[category]),
 															tooltipData: {
-																x: d.x,
+																...d,
 																y: d[category],
 																category,
 																colorGroup: dataRender.groupBreaksCategory
@@ -629,12 +677,15 @@ const Scatter = () => {
 												const anchorX = independentScale(getIndependentValue(d));
 												const anchorY = dependentScale(d[category]);
 												const labelId = buildScatterLabelId(i, category, d, j);
-												const { dx, dy } = getDeclutterOffset(
+												const { dx, dy, hidden } = getDeclutterOffset(
 													scatterLabelOffsets,
 													labelId,
 													labels.labelPositionDX,
 													labels.labelPositionDY
 												);
+												if (hidden) {
+													return null;
+												}
 
 												return (
 													<AnimatedLabel
@@ -652,7 +703,10 @@ const Scatter = () => {
 														labelId={labelId}
 														leaderLine={
 															labels.autoDeclutter && labels.declutterLeaderLines
-																? { enabled: true, anchorRadius: nodes.pointSize }
+																? {
+																		enabled: true,
+																		anchorRadius: getPointRadius(d),
+																	}
 																: undefined
 														}
 														{...labelProps}
@@ -824,7 +878,7 @@ const Scatter = () => {
 									<Circle
 										cx={tooltipLeft}
 										cy={tooltipTop + 1}
-										r={nodes.pointSize + 2}
+										r={getTooltipPointRadius() + 2}
 										fill={'transparent'}
 										fillOpacity={0.1}
 										stroke="black"
@@ -835,7 +889,7 @@ const Scatter = () => {
 									<Circle
 										cx={tooltipLeft}
 										cy={tooltipTop}
-										r={nodes.pointSize + 1}
+										r={getTooltipPointRadius() + 1}
 										fill={'transparent'}
 										stroke="white"
 										strokeWidth={2}
@@ -911,12 +965,19 @@ const Scatter = () => {
 										const editorAnchorX = independentScale(getIndependentValue(d));
 										const editorAnchorY = dependentScale(d[category]);
 										const editorLabelId = buildScatterLabelId(i, category, d, j);
-										const { dx: editorDx, dy: editorDy } = getDeclutterOffset(
+										const {
+											dx: editorDx,
+											dy: editorDy,
+											hidden: editorHidden,
+										} = getDeclutterOffset(
 											scatterLabelOffsets,
 											editorLabelId,
 											labels.labelPositionDX,
 											labels.labelPositionDY
 										);
+										if (editorHidden) {
+											return null;
+										}
 
 										return (
 											<DraggableLabel
@@ -934,7 +995,10 @@ const Scatter = () => {
 												labelId={editorLabelId}
 												leaderLine={
 													labels.autoDeclutter && labels.declutterLeaderLines
-														? { enabled: true, anchorRadius: nodes.pointSize }
+														? {
+																enabled: true,
+																anchorRadius: getPointRadius(d),
+															}
 														: undefined
 												}
 												{...labelProps}
@@ -1023,6 +1087,7 @@ const Scatter = () => {
 														: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
+												data: tooltipData,
 											},
 											tooltip,
 											dataRender

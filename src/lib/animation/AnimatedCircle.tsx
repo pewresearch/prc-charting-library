@@ -119,6 +119,8 @@ const AnimatedCircle = forwardRef<SVGCircleElement, AnimatedCircleProps>(
 		// section duration when the host doesn't supply one (standalone points).
 		const entranceDurationRef = useRef(entranceDuration);
 
+		const { easing, immediate } = phaseTiming;
+
 		// When the host drives the position (line/area markers, slice 3f), `cx`/
 		// `cy` arrive as react-spring values — the marker is glued to its host
 		// path's shared spring, so we must NOT spring the position here (a
@@ -131,7 +133,9 @@ const AnimatedCircle = forwardRef<SVGCircleElement, AnimatedCircleProps>(
 		// Standalone points fold `geometryDelay` on update so labels fade out
 		// before the dot glides; host-driven markers rely on `usePointGlide`.
 		let effectiveDelay: number;
-		if (isEntering) {
+		if (immediate) {
+			effectiveDelay = 0;
+		} else if (isEntering) {
 			effectiveDelay = phaseTiming.geometryDelay + entranceDelayRef.current;
 		} else if (positionControlled) {
 			effectiveDelay = updateSection.delay;
@@ -147,7 +151,6 @@ const AnimatedCircle = forwardRef<SVGCircleElement, AnimatedCircleProps>(
 		} else {
 			effectiveDuration = phaseTiming.geometryDuration;
 		}
-		const { easing, immediate } = phaseTiming;
 
 		// Stable numeric seeds for the position keys. When the host controls
 		// the position these are unused (we render the passed values directly),
@@ -183,18 +186,23 @@ const AnimatedCircle = forwardRef<SVGCircleElement, AnimatedCircleProps>(
 		});
 
 		const composedClassName = className ? `visx-circle ${className}` : 'visx-circle';
+		// In the editor (and under reduced motion) springs run with
+		// `immediate: true`. react-spring can fail to push live inspector
+		// changes for fill/opacity through the animated channel, so bind
+		// paint props directly whenever we are not actually tweening.
+		const useDirectPaint = immediate;
 
 		return (
 			<animated.circle
 				ref={ref}
 				{...rest}
 				className={composedClassName}
-				cx={positionControlled ? cx : springs.cx}
-				cy={positionControlled ? cy : springs.cy}
-				r={springs.r}
-				fill={springs.fill}
-				opacity={springs.opacity}
-				fillOpacity={springs.fillOpacity}
+				cx={positionControlled ? cx : useDirectPaint ? numericCx : springs.cx}
+				cy={positionControlled ? cy : useDirectPaint ? numericCy : springs.cy}
+				r={useDirectPaint ? r : springs.r}
+				fill={useDirectPaint ? fill : springs.fill}
+				opacity={useDirectPaint ? opacity : springs.opacity}
+				fillOpacity={useDirectPaint ? (fillOpacity ?? 1) : springs.fillOpacity}
 			/>
 		);
 	}

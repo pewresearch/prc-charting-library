@@ -11,6 +11,7 @@ import {
 	getCustomTooltip,
 	getFlattenedData,
 	getGroupedData,
+	createGroupBandScale,
 	getGroupPositioningHorizontal,
 	getGroupValue,
 	getLabelFormat,
@@ -23,6 +24,10 @@ import {
 	resolveCategoryOpacity,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
+	getLinearValueDataExtent,
+	hasExplicitAxisDomain,
+	resolveLinearScaleDomain,
+	resolveScaleNice,
 	scaleAxisNumTicks,
 	useSize,
 } from '@prc/charting-utilities';
@@ -137,11 +142,16 @@ const StackedBarHorizontal = () => {
 	const dependentScale = useMemo(
 		() =>
 			scaleLinear({
-				domain: dependentAxis.domain,
+				// Null/auto domains fall back to the stacked data extent;
+				// visx would otherwise silently keep d3's default [0, 1].
+				domain: resolveLinearScaleDomain(
+					dependentAxis.domain,
+					getLinearValueDataExtent(flattenedData, dataRender.categories, { stacked: true })
+				),
 				range: [0, innerWidth],
-				nice: true,
+				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[innerWidth, dependentAxis.domain]
+		[innerWidth, dependentAxis.domain, dependentAxis.nice, flattenedData, dataRender.categories]
 	);
 	const colorScale = useMemo(
 		() =>
@@ -230,11 +240,11 @@ const StackedBarHorizontal = () => {
 
 							// Create individual scale for this group with relative positioning (0 to height)
 							// since the Group is already positioned at startY
-							const groupScale = scaleBand<string>({
-								domain: data.map(getIndependentValue),
-								range: [height, 0],
-								padding: barConfig.barPadding,
-							});
+							const groupScale = createGroupBandScale(
+								data.map(getIndependentValue),
+								[height, 0],
+								barConfig.barPadding
+							);
 
 							return (
 								<Group key={`group-${groupIndex}-${group}`}>
@@ -362,7 +372,7 @@ const StackedBarHorizontal = () => {
 																			clearTimeout(tooltipTimeout);
 																		showTooltip({
 																			tooltipData: {
-																				x: barData.x,
+																				...barData,
 																				y: barValue,
 																				category,
 																				tooltip: customTooltip,
@@ -390,7 +400,7 @@ const StackedBarHorizontal = () => {
 																		};
 																		showTooltip({
 																			tooltipData: {
-																				x: barData.x,
+																				...barData,
 																				y: barValue,
 																				category,
 																				tooltip: customTooltip,
@@ -531,11 +541,11 @@ const StackedBarHorizontal = () => {
 									const { data, startY, height } = groupPos;
 
 									// Create individual scale for this group's axis
-									const groupScale = scaleBand<string>({
-										domain: data.map(getIndependentValue),
-										range: [startY + height, startY],
-										padding: barConfig.barPadding,
-									});
+									const groupScale = createGroupBandScale(
+										data.map(getIndependentValue),
+										[startY + height, startY],
+										barConfig.barPadding
+									);
 
 									return (
 										<AxisLeft
@@ -649,6 +659,7 @@ const StackedBarHorizontal = () => {
 													fallback: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
+												data: tooltipData,
 											},
 											tooltip,
 											dataRender

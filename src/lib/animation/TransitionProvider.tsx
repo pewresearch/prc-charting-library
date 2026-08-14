@@ -119,9 +119,13 @@ export function TransitionProvider({ data, family = 'bar', children }: Transitio
 		data,
 	}));
 
-	// Detect a data change during render so labels see `exiting` on the very
-	// first frame the new data lands (no one-frame flash of new content).
-	if (data !== state.data) {
+	// Detect a data change during render. `setState` alone does NOT update
+	// `state` for this pass — under Preact (view bundle) that intermediate
+	// render can commit, so labels would flash the NEW text at `visible`
+	// before `exiting` lands. Derive the outgoing phase synchronously and
+	// publish it through context on this same render.
+	const dataChanged = data !== state.data;
+	if (dataChanged) {
 		setState((prev) => ({
 			phase: update.immediate ? 'visible' : 'exiting',
 			kind: 'update',
@@ -130,8 +134,10 @@ export function TransitionProvider({ data, family = 'bar', children }: Transitio
 		}));
 	}
 
-	const activeTiming = state.kind === 'initial' ? initial : update;
-	const { phase, epoch } = state;
+	const kind: ProviderState['kind'] = dataChanged ? 'update' : state.kind;
+	const phase: TransitionPhase = dataChanged ? (update.immediate ? 'visible' : 'exiting') : state.phase;
+	const epoch = state.epoch;
+	const activeTiming = kind === 'initial' ? initial : update;
 
 	// Phase progression. Each non-idle phase schedules the next; cleanup
 	// cancels in-flight timers on unmount or when a fresh data change resets

@@ -9,6 +9,7 @@ import type { BaseConfig, FlatData, Size, TableData } from '@prc/charting-utilit
 import {
 	DataContext,
 	generateElementKey as generateElementKeyUtil,
+	generateSegmentKey,
 	getChartDimensions,
 	getCustomTooltip,
 	getGroupValue,
@@ -17,22 +18,31 @@ import {
 	getSharedProps,
 	getTooltipFormat,
 	getTooltipHeaderFormat,
+	hasCategoryValue,
+	shouldShowLinePoint,
 	isLabelVisible,
+	linearBarBaseline,
 	newDateByFormat,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveNodeShapeColors,
 	legendCategoryShapeStyle,
 	scaleAxisNumTicks,
 	useSize,
 } from '@prc/charting-utilities';
+import { useLineFamilyScales } from '../scales';
 import {
 	AnnotationsLayer,
 	ClickableLegend,
 	ClickableTicks,
+	Crosshair,
 	DrawingsLayer,
 	PlotBands,
 	StyledLegend,
 	StyledTooltip,
+	UnifiedTooltipRows,
+	useUnifiedTooltip,
+	ZeroBaseline,
 } from '../overlays';
 import { AnimatedArea, AnimatedCircle, AnimatedLinePath, AnimatedLabel, TransitionProvider } from '../animation';
 import { DraggableLabel } from '../labels';
@@ -41,6 +51,7 @@ import {
 	buildLineChartLabelInputs,
 	DirectSeriesLegendLabels,
 	getDeclutterOffset,
+	getFirstLastLabelPlacement,
 	getLineLabelContent,
 	LeaderLineProvider,
 	LeaderLineUnderlay,
@@ -53,14 +64,14 @@ import * as Curve from '@visx/curve';
 import { GridColumns, GridRows } from '@visx/grid';
 import { Group } from '@visx/group';
 import { LegendOrdinal } from '@visx/legend';
-import { scaleLinear, scaleOrdinal, scaleTime } from '@visx/scale';
+import { scaleOrdinal } from '@visx/scale';
 import {
 	// Line as VerticalLine,
 	Circle,
 } from '@visx/shape';
 import { useTooltip } from '@visx/tooltip';
 import { voronoi, VoronoiPolygon } from '@visx/voronoi';
-import { ascending, descending, extent, max } from 'd3-array';
+import { ascending, descending } from 'd3-array';
 
 import styled from '@emotion/styled';
 
@@ -75,31 +86,6 @@ const StyledAnimatedCircle = styled(AnimatedCircle)`
 		outline: none;
 	}
 `;
-
-/**
- * Normalize a value for use in keys.
- * Converts Date objects to ISO strings for consistent keys across editor and frontend.
- * @param value
- */
-function normalizeKeyValue(value: any): string {
-	if (value instanceof Date) {
-		return value.toISOString();
-	}
-	return String(value);
-}
-
-/**
- * Generate a unique key for a line segment.
- * Handles Date objects by converting to ISO strings.
- * @param startX
- * @param endX
- * @param category
- */
-function generateSegmentKey(startX: any, endX: any, category: string): string {
-	const start = normalizeKeyValue(startX);
-	const end = normalizeKeyValue(endX);
-	return `${start}::${end}::${category}`;
-}
 
 /**
  * Generate a unique key for a shape (circle/node).
@@ -192,6 +178,7 @@ const Line = () => {
 						if (d[c]) {
 							const { body: _lineTip, header: _lineHdr } = getCustomTooltip(d, c);
 							return {
+								...d,
 								x: d.x,
 								y: d[c],
 								category: c,
@@ -226,35 +213,27 @@ const Line = () => {
 
 	const getDependentValue = useCallback((d: FlatData) => d[dataRender.y] as number, [dataRender]);
 
-	// SCALES, VORONOI, INTERPOLATION
-	const timeScale = useMemo(
-		() =>
-			scaleTime({
-				domain: extent(flattenedData, getIndependentValue) as [Date, Date],
-				range: [0, innerWidth],
+	const getSeriesColor = useCallback(
+		(category: string, index: number) =>
+			resolveCategoryColor({
+				category,
+				fallback: colors[index],
+				dataRender,
 			}),
-		[innerWidth, flattenedData, getIndependentValue]
+		[colors, dataRender]
 	);
-	const linearScale = useMemo(
-		() =>
-			scaleLinear({
-				domain: independentAxis.domain
-					? independentAxis.domain
-					: [0, max(flattenedData, getIndependentValue) || 0],
-				range: [0, innerWidth],
-			}),
-		[innerWidth, independentAxis, flattenedData, getIndependentValue]
-	);
-	const independentScale = independentAxis.scale === 'time' ? timeScale : linearScale;
-	const dependentScale = useMemo(
-		() =>
-			scaleLinear({
-				domain: dependentAxis.domain ? dependentAxis.domain : [0, max(flattenedData, getDependentValue) || 0],
-				range: [innerHeight, 0],
-				nice: true,
-			}),
-		[innerHeight, flattenedData, dependentAxis, getDependentValue]
-	);
+
+	const { independentScale, dependentScale } = useLineFamilyScales({
+		independentAxis,
+		dependentAxis,
+		innerWidth,
+		innerHeight,
+		flattenedData,
+		getIndependentValue,
+		getDependentValue,
+	});
+	const areaBaseline = linearBarBaseline(dependentScale);
+
 	const colorScale = useMemo(
 		() =>
 			scaleOrdinal<string, string>({
@@ -326,6 +305,43 @@ const Line = () => {
 		]
 	);
 
+	const { isDirectLegend, directSeriesDeclutterInputs, directSeriesOffsets, omittedCategories, labelScales } =
+		useDirectSeriesLegend({
+			legend,
+			labels,
+			dataRender,
+			flattenedData,
+			innerWidth,
+			innerHeight,
+			padding,
+			layout,
+			independentScale,
+			dependentScale,
+			getIndependentValue,
+		});
+
+	// UNIFIED TOOLTIP
+	// One column per x, every series in it. Bypasses voronoi entirely; point
+	// mode never reaches any of this.
+	const {
+		isUnified,
+		activeColumn,
+		snapTo: snapUnifiedColumn,
+		clear: clearUnifiedColumn,
+	} = useUnifiedTooltip({
+		tooltip,
+		flattenedData,
+		categories: dataRender.categories,
+		independentScale,
+		dependentScale,
+		getIndependentValue,
+		getSeriesColor,
+	});
+
+	// With every series lit there is no sibling to dim, and `!== category`
+	// would dim all of them. Locked decision 9: bypassed, not merely hidden.
+	const deemphasisActive = tooltip.deemphasizeSiblings && !isUnified;
+
 	const lineLabelDeclutterInputs = useMemo(() => {
 		if (!labels.active || !labels.autoDeclutter) {
 			return [];
@@ -338,7 +354,7 @@ const Line = () => {
 			independentScale,
 			dependentScale,
 			getIndependentValue,
-		});
+		}).filter((input) => !input.category || !omittedCategories.has(input.category));
 	}, [
 		labels,
 		dataRender.categories,
@@ -347,6 +363,7 @@ const Line = () => {
 		independentScale,
 		dependentScale,
 		getIndependentValue,
+		omittedCategories,
 	]);
 
 	const lineLabelOffsets = useLabelDeclutter(
@@ -359,23 +376,10 @@ const Line = () => {
 			anchorStrengthY: 0.35,
 			innerWidth,
 			innerHeight,
+			omitWithin: labels.declutterOmitWithin,
 		},
 		!!(labels.active && labels.autoDeclutter)
 	);
-
-	const { isDirectLegend, directSeriesDeclutterInputs, directSeriesOffsets, labelScales } = useDirectSeriesLegend({
-		legend,
-		labels,
-		dataRender,
-		flattenedData,
-		innerWidth,
-		innerHeight,
-		padding,
-		layout,
-		independentScale,
-		dependentScale,
-		getIndependentValue,
-	});
 
 	const renderLineChartLabel = (
 		key: string,
@@ -389,6 +393,8 @@ const Line = () => {
 			defaultLabel,
 			labelContent,
 			seriesColor,
+			pointIndex,
+			pointCount,
 		}: {
 			anchorX: number;
 			anchorY: number;
@@ -398,14 +404,26 @@ const Line = () => {
 			defaultLabel: string;
 			labelContent: string;
 			seriesColor: string;
+			pointIndex: number;
+			pointCount: number;
 		}
 	) => {
-		const { dx, dy } = getDeclutterOffset(
+		const placement = getFirstLastLabelPlacement({
+			pointIndex,
+			pointCount,
+			labels,
+			fallbackTextAnchor:
+				(labelProps as { textAnchor?: 'start' | 'middle' | 'end' }).textAnchor ?? labels.textAnchor,
+		});
+		const { dx, dy, hidden } = getDeclutterOffset(
 			lineLabelOffsets,
 			labelId,
-			labels.labelPositionDX,
-			labels.labelPositionDY
+			placement.defaultDx,
+			placement.defaultDy
 		);
+		if (hidden) {
+			return null;
+		}
 
 		return (
 			<LabelComponent
@@ -426,6 +444,7 @@ const Line = () => {
 						: undefined
 				}
 				{...labelProps}
+				textAnchor={placement.textAnchor}
 			>
 				{labelContent}
 			</LabelComponent>
@@ -472,6 +491,13 @@ const Line = () => {
 			const adjustedX = point.x - padding.left;
 			const adjustedY = point.y - padding.top;
 
+			// Unified mode snaps on x alone, so a hover high above every line
+			// still resolves the column beneath it. A proximity search cannot.
+			if (isUnified) {
+				snapUnifiedColumn(adjustedX);
+				return;
+			}
+
 			// Use a max search radius to avoid showing tooltips when cursor is
 			// far from any data point. Scale the radius relative to chart size
 			// so it works at different viewport widths.
@@ -505,6 +531,8 @@ const Line = () => {
 			padding,
 			data.length,
 			setCursorPosition,
+			isUnified,
+			snapUnifiedColumn,
 		]
 	);
 	const handleOnClick = useCallback(
@@ -528,8 +556,9 @@ const Line = () => {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 		tooltipTimeout = window.setTimeout(() => {
 			hideTooltip();
+			clearUnifiedColumn();
 		}, 300);
-	}, [hideTooltip]);
+	}, [hideTooltip, clearUnifiedColumn]);
 
 	return (
 		<TransitionProvider data={data} family="line">
@@ -575,6 +604,13 @@ const Line = () => {
 							)}
 							<GridRows {...dependentGridProps} />
 							<GridColumns {...independentGridProps} />
+							<ZeroBaseline
+								scale={dependentScale}
+								along="x"
+								length={innerWidth}
+								stroke={dependentAxis.axis.stroke}
+								strokeWidth={dependentAxis.axis.strokeWidth}
+							/>
 							{voronoiConfig.active &&
 								voronoiLayout
 									.polygons()
@@ -604,8 +640,8 @@ const Line = () => {
 							{dataRender.categories.map((category: string, i: number) => {
 								// it's not guaranteed that all categories have the same number of data points
 								// so we need to filter out any data points that don't have a value for the current category
-								const filteredData = flattenedData.filter(
-									(d: FlatData) => d[category] || d[category] !== ''
+								const filteredData = flattenedData.filter((d: FlatData) =>
+									hasCategoryValue(d, category)
 								);
 								const seriesColor = resolveCategoryColor({
 									category,
@@ -633,12 +669,24 @@ const Line = () => {
 									entranceDelay = 0,
 									entranceDuration: number | undefined = undefined
 								) => {
+									if (
+										!shouldShowLinePoint({
+											showPoints: line.showPoints,
+											showFirstLastPointsOnly: line.showFirstLastPointsOnly,
+											index: j,
+											pointCount: filteredData.length,
+										})
+									) {
+										return null;
+									}
 									const groupValue = getGroupValue(d, dataRender);
 									const shapeKey = generateShapeKey(d.x, category, groupValue);
 									const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-									const defaultColor = nodes.pointFill === 'inherit' ? seriesColor : 'white';
-									const defaultStroke = seriesColor;
-									const shapeFill = customShapeStyles.fill || defaultColor;
+									const { fill: defaultFill, stroke: defaultStroke } = resolveNodeShapeColors(
+										nodes,
+										seriesColor
+									);
+									const shapeFill = customShapeStyles.fill || defaultFill;
 									const shapeStroke = customShapeStyles.stroke || defaultStroke;
 									const shapeStrokeWidth = customShapeStyles.strokeWidth ?? nodes.pointStrokeWidth;
 									const shapeOpacity = (customShapeStyles.opacity ?? 1) * seriesOpacity;
@@ -664,7 +712,7 @@ const Line = () => {
 													wpEditorFunctions.shapes.onClick(
 														d,
 														category,
-														defaultColor,
+														seriesColor,
 														event.currentTarget,
 														groupValue
 													);
@@ -673,10 +721,10 @@ const Line = () => {
 											fillOpacity={
 												tooltipData &&
 												tooltipVisible &&
-												tooltip.deemphasizeSiblings &&
+												deemphasisActive &&
 												tooltipData.category !== category
 													? tooltip.deemphasizeOpacity
-													: 1
+													: (nodes.pointFillOpacity ?? 1)
 											}
 											onBlur={() => {
 												tooltipTimeout = window.setTimeout(() => {
@@ -693,7 +741,7 @@ const Line = () => {
 													tooltipLeft: independentScale(getIndependentValue(d)),
 													tooltipTop: dependentScale(d[category]),
 													tooltipData: {
-														x: d.x,
+														...d,
 														y: d[category],
 														category,
 														color: seriesColor,
@@ -713,7 +761,7 @@ const Line = () => {
 												key={`area-${i}`}
 												points={filteredData.map((d: FlatData) => ({
 													x: independentScale(getIndependentValue(d)) ?? 0,
-													y0: dependentScale(dependentScale.domain()[0]) ?? 0,
+													y0: areaBaseline,
 													y1: dependentScale(d[category]) ?? 0,
 												}))}
 												strokeWidth={0}
@@ -781,7 +829,7 @@ const Line = () => {
 														const isDeemphasized =
 															tooltipData &&
 															tooltipVisible &&
-															tooltip.deemphasizeSiblings &&
+															deemphasisActive &&
 															tooltipData.category !== category;
 
 														// Hover highlight styling
@@ -789,7 +837,7 @@ const Line = () => {
 															? segmentStrokeWidth + 2
 															: tooltipData &&
 																  tooltipVisible &&
-																  tooltip.deemphasizeSiblings &&
+																  deemphasisActive &&
 																  tooltipData.category === category
 																? segmentStrokeWidth + 1
 																: segmentStrokeWidth;
@@ -863,7 +911,7 @@ const Line = () => {
 													strokeOpacity={
 														(tooltipData &&
 														tooltipVisible &&
-														tooltip.deemphasizeSiblings &&
+														deemphasisActive &&
 														tooltipData.category !== category
 															? tooltip.deemphasizeOpacity
 															: 1) * seriesOpacity
@@ -911,6 +959,9 @@ const Line = () => {
 										{labels.active &&
 											!wpEditorFunctions?.labels &&
 											filteredData?.map((d: FlatData, j: number) => {
+												if (omittedCategories.has(category)) {
+													return null;
+												}
 												if (!isLabelVisible(d, category)) {
 													return null;
 												}
@@ -936,9 +987,14 @@ const Line = () => {
 													defaultLabel,
 													labelContent,
 													seriesColor,
+													pointIndex: j,
+													pointCount: filteredData.length,
 												});
 											})}
-										{tooltipData && tooltipVisible && (
+										{/* Point mode only. This sits inside the per-category map, so
+										    in unified mode N series would each draw the same pair of
+										    circles; `<Crosshair>` draws them once instead. */}
+										{!isUnified && tooltipData && tooltipVisible && (
 											<g>
 												<Circle
 													cx={tooltipLeft}
@@ -973,6 +1029,10 @@ const Line = () => {
 									</g>
 								);
 							})}
+							{/* After the series so the rule and nodes sit above the lines. */}
+							{isUnified && activeColumn && tooltipVisible && (
+								<Crosshair column={activeColumn} nodeRadius={nodes.pointSize} />
+							)}
 						</Group>
 						{annotationsVisible && (
 							<AnnotationsLayer
@@ -996,8 +1056,8 @@ const Line = () => {
 						{labels.active && wpEditorFunctions?.labels && (
 							<Group top={padding.top} left={padding.left}>
 								{dataRender.categories.map((category: string, i: number) => {
-									const filteredData = flattenedData.filter(
-										(d: FlatData) => d[category] || d[category] !== ''
+									const filteredData = flattenedData.filter((d: FlatData) =>
+										hasCategoryValue(d, category)
 									);
 									const seriesColor = resolveCategoryColor({
 										category,
@@ -1005,6 +1065,9 @@ const Line = () => {
 										dataRender,
 									});
 									return filteredData?.map((d: FlatData, j: number) => {
+										if (omittedCategories.has(category)) {
+											return null;
+										}
 										const { content: labelContent, defaultLabel } = getLineLabelContent(
 											d,
 											category,
@@ -1026,6 +1089,8 @@ const Line = () => {
 											defaultLabel,
 											labelContent,
 											seriesColor,
+											pointIndex: j,
+											pointCount: filteredData.length,
 										});
 									});
 								})}
@@ -1077,7 +1142,42 @@ const Line = () => {
 						</LegendOrdinal>
 					</StyledLegend>
 				)}
-				{tooltipOpen && tooltipData && tooltipVisible && (
+				{isUnified && activeColumn && tooltipVisible && (
+					<StyledTooltip
+						top={cursorPosition?.y ?? 0}
+						left={activeColumn.px + padding.left}
+						tooltip={tooltip}
+						anchorX={activeColumn.px + padding.left}
+						cursorY={cursorPosition?.y}
+						containerRef={svgRef}
+						isMobile={isMobileTooltip}
+					>
+						<>
+							{tooltip.headerActive && (
+								<div
+									style={{
+										marginBottom: '10px',
+									}}
+								>
+									{/* The x value in both branches of
+									    `headerValue`: with every series in the box
+									    there is no one category to name. */}
+									<strong>
+										{getTooltipHeaderFormat(
+											{
+												x: activeColumn.xValue,
+												category: activeColumn.xValue,
+											},
+											tooltip
+										)}
+									</strong>
+								</div>
+							)}
+						</>
+						<UnifiedTooltipRows column={activeColumn} tooltip={tooltip} dataRender={dataRender} />
+					</StyledTooltip>
+				)}
+				{!isUnified && tooltipOpen && tooltipData && tooltipVisible && (
 					<StyledTooltip
 						top={tooltipTop}
 						left={tooltipLeft}
@@ -1122,6 +1222,7 @@ const Line = () => {
 													fallback: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
+												data: tooltipData,
 											},
 											tooltip,
 											dataRender

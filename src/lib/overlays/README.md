@@ -4,4 +4,4 @@
 
 **Layer + dependency rule:** Layer 3. May import `primitives/`, `animation/`, `labels/` (e.g. `DraggableLabel` on maps), `@prc/charting-utilities`. Must **not** import `charts/` or `controller/`.
 
-**Admission test:** Presentational chrome that draws a thing without an engine-backed layout subsystem. Label layout engines → `labels/engine/`, not here.
+**Admission test:** Presentational chrome that draws a thing without an engine-backed layout subsystem. Label layout compute → `@prc/charting-utilities/labelLayout/`, not here.

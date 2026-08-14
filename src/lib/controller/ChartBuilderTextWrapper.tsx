@@ -1,5 +1,3 @@
-// React Dependencies
-import { Fragment } from 'react';
 // Internal Dependencies
 import { Title, Subtitle, HorizontalRule, SourceNote, Tag } from '../overlays';
 
@@ -18,22 +16,26 @@ type TextWrapperProps = {
 const ChartBuilderTextWrapper = (props: TextWrapperProps) => {
 	const { children, horizontalRules, width, title, subtitle, note, source, tag, active } = props;
 
+	// Attribute width is a cap, not a floor, so the text tracks the chart when a
+	// narrower container shrinks it. Matches the frontend markup in class-chart.php.
+	const wrapperStyle = {
+		width: '100%',
+		maxWidth: `${width}px`,
+		marginLeft: 'auto',
+		marginRight: 'auto',
+	};
+
 	return (
-		<Fragment>
-			{active && (
-				<div className={`cb__text-wrapper`} style={{ maxWidth: `${width}px`, width: '100%' }}>
-					{horizontalRules && <HorizontalRule position={'top'} maxWidth={width} />}
-					{title && <Title title={title} />}
-					{subtitle && <Subtitle subtitle={subtitle} />}
-					{children}
-					{note && <SourceNote note={note} />}
-					{source && <SourceNote note={source} />}
-					{tag && <Tag tag={tag} />}
-					{horizontalRules && <HorizontalRule position={'bottom'} maxWidth={width} />}
-				</div>
-			)}
-			{!active && children}
-		</Fragment>
+		<div className="cb__text-wrapper" style={wrapperStyle}>
+			{active && horizontalRules && <HorizontalRule position={'top'} maxWidth={width} />}
+			{active && title && <Title title={title} />}
+			{active && subtitle && <Subtitle subtitle={subtitle} />}
+			{children}
+			{active && note && <SourceNote note={note} />}
+			{active && source && <SourceNote note={source} />}
+			{active && tag && <Tag tag={tag} />}
+			{active && horizontalRules && <HorizontalRule position={'bottom'} maxWidth={width} />}
+		</div>
 	);
 };
 

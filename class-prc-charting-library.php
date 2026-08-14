@@ -2,23 +2,23 @@
 /**
  *
  * @package           PRC_Charting_Library
- * @author            Ben Wormald
- * @copyright         2023 Pew Research Center
- * @license           GPL-2.0-or-later
+ * @author            Pew Research Center
+ * @copyright         2023-2026 Pew Research Center
+ * @license           MIT
  *
  * @wordpress-plugin
  * Plugin Name:       PRC Charting Library
  * Plugin URI:        https://github.com/pewresearch/pewresearch-org
  * Description:       Pew Research Center's propietary charting library framework for use in PRC Platform.
- * Version:           3.12.0
+ * Version:           3.14.0
  * Requires at least: 6.2
  * Requires PHP:      8.0
  * Requires Plugins:  prc-scripts
- * Author:            Ben Wormald
+ * Author:            Pew Research Center
  * Author URI:        https://pewresearch.org
  * Text Domain:       prc-charting-library
- * License:           GPL v2 or later
- * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
+ * License:           MIT
+ * License URI:       https://opensource.org/licenses/MIT
  */
 
 class PRC_Charting_Library {

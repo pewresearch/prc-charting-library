@@ -7,8 +7,10 @@ import {
 	getStackedSeriesDependentValue,
 } from '@prc/charting-utilities';
 import { getDeclutterOffset, useLabelDeclutter } from './useLabelDeclutter';
+import { getOmittedDirectLegendCategories } from './getOmittedDirectLegendCategories';
 
 export { getStackedSeriesDependentValue };
+export { getOmittedDirectLegendCategories };
 
 export function useDirectSeriesLegend({
 	legend,
@@ -70,6 +72,11 @@ export function useDirectSeriesLegend({
 			getSeriesDependentValue,
 			padding,
 			scales: labelScales,
+			// One threshold drives placement and omission: a name is moved only
+			// when it is closer than this to a neighbour, and dropped only when
+			// moving cannot find it that much room. Splitting the two lets a name
+			// hold a spot the crowd sweep then deletes it for.
+			crowdRadius: labels.declutterOmitWithin ?? 0,
 		});
 	}, [
 		isDirectLegend,
@@ -83,6 +90,7 @@ export function useDirectSeriesLegend({
 		getSeriesDependentValue,
 		padding,
 		labelScales,
+		labels.declutterOmitWithin,
 	]);
 
 	const directSeriesOffsets = useLabelDeclutter(
@@ -94,14 +102,22 @@ export function useDirectSeriesLegend({
 			anchorStrengthY: 0.5,
 			innerWidth,
 			innerHeight,
+			omitWithin: labels.declutterOmitWithin,
+			omitEdgeWithin: labels.declutterOmitEdgeWithin,
 		},
 		isDirectLegend
+	);
+
+	const omittedCategories = useMemo(
+		() => getOmittedDirectLegendCategories(directSeriesDeclutterInputs, directSeriesOffsets),
+		[directSeriesDeclutterInputs, directSeriesOffsets]
 	);
 
 	return {
 		isDirectLegend,
 		directSeriesDeclutterInputs,
 		directSeriesOffsets,
+		omittedCategories,
 		labelScales,
 		getDeclutterOffset,
 	};

@@ -729,13 +729,12 @@ const Pie = () => {
 							dangerouslySetInnerHTML={{
 								__html:
 									getCustomTooltip(tooltipData, dataRender.categories[0]).body ||
-									getTooltipFormat(
-										{
+									getTooltipFormat({
 											x: getIndependentValue(tooltipData),
 											y: getDependentValue(tooltipData),
 											category: dataRender.categories[0],
 											color: tooltipData.color,
-										},
+										data: tooltipData,},
 										tooltip,
 										dataRender
 									),

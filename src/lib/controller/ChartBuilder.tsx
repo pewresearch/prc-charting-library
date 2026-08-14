@@ -7,6 +7,7 @@ import { BaseConfig, DataContext, TableData } from '@prc/charting-utilities';
 import {
 	BarHorizontal,
 	BarVertical,
+	BeeSwarm,
 	DivergingBarHorizontal,
 	DivergingBarVertical,
 	DotPlot,
@@ -20,6 +21,9 @@ import {
 	StackedArea,
 	Treemap,
 	SankeyChart,
+	SmallMultiples,
+	Waffle,
+	HeatMapTable,
 } from '../charts';
 
 // Lazy load map components - these will be code-split with their topology files
@@ -149,6 +153,12 @@ const ChartBuilder = () => {
 					<Scatter />
 				</ChartContainer>
 			);
+		case 'bee-swarm':
+			return (
+				<ChartContainer className="cb__chart cb__chart__bee-swarm" maxWidth={width} minHeight={height}>
+					<BeeSwarm />
+				</ChartContainer>
+			);
 		case 'map-usa':
 			return (
 				<ChartContainer className="cb__chart cb__chart__map-usa" maxWidth={width} minHeight={height}>
@@ -228,6 +238,26 @@ const ChartBuilder = () => {
 			return (
 				<ChartContainer className="cb__chart cb__chart__radar" maxWidth={width} minHeight={height}>
 					<Radar />
+				</ChartContainer>
+			);
+		case 'small-multiples':
+			// SVG height is derived from locked panelHeight × rowCount.
+			// Skip layout.height min-height so restack can grow the wrapper.
+			return (
+				<ChartContainer className="cb__chart cb__chart__small-multiples" maxWidth={width}>
+					<SmallMultiples />
+				</ChartContainer>
+			);
+		case 'waffle':
+			return (
+				<ChartContainer className="cb__chart cb__chart__waffle" maxWidth={width} minHeight={height}>
+					<Waffle />
+				</ChartContainer>
+			);
+		case 'heat-map-table':
+			return (
+				<ChartContainer className="cb__chart cb__chart__heat-map-table" maxWidth={width} minHeight={height}>
+					<HeatMapTable />
 				</ChartContainer>
 			);
 		default:

@@ -34,7 +34,10 @@ export interface MapBubbleLegendProps {
 	maxDataValue: number;
 	/** Bubble fill color (typically `colors[0]`). */
 	fill: string;
-	/** Map bubble stroke color. Only used when layout='spread' AND fillMode='category'. */
+	/**
+	 * Map bubble stroke color. Used only when layout='spread' AND
+	 * fillMode='category'; `legend.bubbleLegend.stroke` overrides it in every layout.
+	 */
 	stroke?: string;
 	strokeWidth?: number;
 	/** Map bubble fill opacity. Applied to filled circles. */
@@ -118,11 +121,15 @@ const MapBubbleLegend = ({
 	const sorted = [...circles].sort((a, b) => b.radius - a.radius);
 	const maxR = sorted[0].radius;
 
-	// Auto-contrast stroke: a white stroke (the map bubbles' default) disappears in
-	// outline-only mode and obscures circle boundaries when nested. Fall back to
-	// currentColor unless the caller actively wants the map-matching stroke.
+	// An explicit `legend.bubbleLegend.stroke` always wins — it is the only way to
+	// make the rings match a map whose bubbles carry a custom stroke, and nesting
+	// must not silently discard it.
+	//
+	// Without one, auto-contrast: a white stroke (the map bubbles' default)
+	// disappears in outline-only mode and obscures circle boundaries when nested,
+	// so fall back to currentColor unless the layout keeps the circles apart.
 	const useMapStroke = layout === 'spread' && fillMode === 'category';
-	const circleStroke = useMapStroke ? stroke : 'currentColor';
+	const circleStroke = legendConfig?.bubbleLegend?.stroke || (useMapStroke ? stroke : 'currentColor');
 	const circleFill = fillMode === 'none' ? 'transparent' : fill;
 
 	const containerStyle: CSSProperties = {

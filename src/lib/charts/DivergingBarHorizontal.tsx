@@ -11,6 +11,7 @@ import {
 	getCustomTooltip,
 	getFlattenedData,
 	getGroupedData,
+	createGroupBandScale,
 	getGroupPositioningHorizontal,
 	getGroupValue,
 	getLabelFormat,
@@ -23,6 +24,10 @@ import {
 	resolveCategoryOpacity,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
+	getLinearValueDataExtent,
+	hasExplicitAxisDomain,
+	resolveLinearScaleDomain,
+	resolveScaleNice,
 	useSize,
 } from '@prc/charting-utilities';
 import { DiffColumn } from './DiffColumn';
@@ -46,6 +51,20 @@ import { scaleBand, scaleLinear, scaleOrdinal } from '@visx/scale';
 import { BarStackHorizontal, Line as VerticalLine } from '@visx/shape';
 import { useTooltip } from '@visx/tooltip';
 import { ascending, descending } from 'd3-array';
+
+/** Mirror labelPositionDX for negative bars so opposing labels stay symmetrical. */
+function withDivergingBarLabelDx(
+	position: { x: number; y: number },
+	value: number,
+	labelPositionDX: number
+): { x: number; y: number; dx: number } {
+	const dx = value < 0 ? -labelPositionDX : labelPositionDX;
+	return {
+		x: position.x - labelPositionDX + dx,
+		y: position.y,
+		dx,
+	};
+}
 
 const DivergingBarHorizontal = () => {
 	const { data, config, tableData, wpEditorFunctions } = useContext(
@@ -160,11 +179,26 @@ const DivergingBarHorizontal = () => {
 	const dependentScale = useMemo(
 		() =>
 			scaleLinear({
-				domain: dependentAxis.domain,
+				// Null/auto domains fall back to the signed stacked extent;
+				// visx would otherwise silently keep d3's default [0, 1].
+				domain: resolveLinearScaleDomain(
+					dependentAxis.domain,
+					getLinearValueDataExtent(flattenedData, dataRender.categories, {
+						stacked: true,
+						negativeCategories: divergingBar.negativeCategories,
+					})
+				),
 				range: [0, innerWidth],
-				nice: true,
+				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[innerWidth, dependentAxis.domain]
+		[
+			innerWidth,
+			dependentAxis.domain,
+			dependentAxis.nice,
+			flattenedData,
+			dataRender.categories,
+			divergingBar.negativeCategories,
+		]
 	);
 
 	const colorScale = useMemo(() => {
@@ -286,11 +320,11 @@ const DivergingBarHorizontal = () => {
 									const { data, startY, height } = groupPos;
 
 									// Create individual scale for this group's axis
-									const groupScale = scaleBand<string>({
-										domain: data.map(getIndependentValue),
-										range: [startY + height, startY],
-										padding: barConfig.barPadding,
-									});
+									const groupScale = createGroupBandScale(
+										data.map(getIndependentValue),
+										[startY + height, startY],
+										barConfig.barPadding
+									);
 
 									return (
 										<AxisLeft
@@ -314,17 +348,17 @@ const DivergingBarHorizontal = () => {
 							// Create scales for this group:
 							// - groupScale: for positioning bars relative to the group's startY
 							// - gridScale: for grid lines within the group (range starts at 0)
-							const groupScale = scaleBand<string>({
-								domain: data.map(getIndependentValue),
-								range: [startY + height, startY],
-								padding: barConfig.barPadding,
-							});
+							const groupScale = createGroupBandScale(
+								data.map(getIndependentValue),
+								[startY + height, startY],
+								barConfig.barPadding
+							);
 
-							const gridScale = scaleBand<string>({
-								domain: data.map(getIndependentValue),
-								range: [height, 0],
-								padding: barConfig.barPadding,
-							});
+							const gridScale = createGroupBandScale(
+								data.map(getIndependentValue),
+								[height, 0],
+								barConfig.barPadding
+							);
 
 							// Negate secondary negative category values so they render left of x=0
 							// under the diverging offset (same transform applied to primary negatives).
@@ -459,6 +493,24 @@ const DivergingBarHorizontal = () => {
 													const shapeOpacity =
 														(customShapeStyles.opacity ?? 1) * categoryOpacity;
 
+													const labelPosition = withDivergingBarLabelDx(
+														positionBarLabel(
+															{
+																x: bar.x,
+																y: bar.y,
+																width: bar.width,
+																height: bar.height,
+																value: barValue,
+															},
+															labels,
+															labelCutoff,
+															'horizontal',
+															'stacked'
+														),
+														barValue,
+														labels.labelPositionDX
+													);
+
 													return (
 														<g key={`barstack-horizontal-${barStack.index}-${bar.index}-g`}>
 															<AnimatedBar
@@ -565,22 +617,11 @@ const DivergingBarHorizontal = () => {
 																labelCutoff < Math.abs(barValue) && (
 																	<AnimatedBarLabel
 																		key={`barstack-horizontal-label-${barStack.index}-${bar.index}`}
-																		{...positionBarLabel(
-																			{
-																				x: bar.x,
-																				y: bar.y,
-																				width: bar.width,
-																				height: bar.height,
-																				value: barValue,
-																			},
-																			labels,
-																			labelCutoff,
-																			'horizontal',
-																			'stacked'
-																		)}
+																		x={labelPosition.x}
+																		y={labelPosition.y}
 																		dataPoint={barData}
 																		category={category}
-																		defaultDx={labels.labelPositionDX}
+																		defaultDx={labelPosition.dx}
 																		defaultDy={labels.labelPositionDY}
 																		chartInnerWidth={innerWidth}
 																		chartInnerHeight={innerHeight}
@@ -604,6 +645,7 @@ const DivergingBarHorizontal = () => {
 																				: 1
 																		}
 																		{...labelProps}
+																		dx={labelPosition.dx}
 																	>
 																		{customLabel ||
 																			`${getLabelFormat(
@@ -800,11 +842,11 @@ const DivergingBarHorizontal = () => {
 								const { group, data, startY, height } = groupPos;
 
 								// Create scale for this group's neutral bars
-								const groupScale = scaleBand<string>({
-									domain: data.map(getIndependentValue),
-									range: [startY + height, startY],
-									padding: barConfig.barPadding,
-								});
+								const groupScale = createGroupBandScale(
+									data.map(getIndependentValue),
+									[startY + height, startY],
+									barConfig.barPadding
+								);
 
 								return (
 									<BarStackHorizontal
@@ -861,6 +903,24 @@ const DivergingBarHorizontal = () => {
 															: undefined);
 													const shapeOpacity =
 														(customShapeStyles.opacity ?? 1) * categoryOpacity;
+
+													const labelPosition = withDivergingBarLabelDx(
+														positionBarLabel(
+															{
+																x: bar.x,
+																y: bar.y,
+																width: bar.width,
+																height: bar.height,
+																value: barValue,
+															},
+															labels,
+															labelCutoff,
+															'horizontal',
+															'single'
+														),
+														barValue,
+														labels.labelPositionDX
+													);
 
 													return (
 														<g
@@ -924,17 +984,17 @@ const DivergingBarHorizontal = () => {
 																		y: 0,
 																	};
 
-																	const tooltipSide: 'left' | 'right' =
-																		divergingBar.negativeCategories.includes(
-																			category
-																		)
-																			? 'left'
-																			: 'right';
+																	// The neutral bar is a single segment, not a
+																	// diverging pair, so it shows a single-point
+																	// tooltip: `{{value}}` / `{{column}}` resolve to
+																	// the neutral bar instead of the row's sides.
 																	showTooltip({
 																		tooltipData: {
 																			...barData,
-																			tooltipMode: 'row',
-																			tooltipSide,
+																			y: barValue,
+																			category,
+																			tooltip: customTooltip,
+																			tooltipHeader: customHeader,
 																		},
 																		tooltipTop: eventSvgCoords.y,
 																		tooltipLeft: eventSvgCoords.x,
@@ -944,19 +1004,8 @@ const DivergingBarHorizontal = () => {
 															{barValue && labels.active && (
 																<AnimatedBarLabel
 																	key={`barstack-horizontal-neutral-label-${barStack.index}-${bar.index}`}
-																	{...positionBarLabel(
-																		{
-																			x: bar.x,
-																			y: bar.y,
-																			width: bar.width,
-																			height: bar.height,
-																			value: barValue,
-																		},
-																		labels,
-																		labelCutoff,
-																		'horizontal',
-																		'single'
-																	)}
+																	x={labelPosition.x}
+																	y={labelPosition.y}
 																	dataPoint={barData}
 																	category={category}
 																	defaultDx={0}
@@ -983,6 +1032,7 @@ const DivergingBarHorizontal = () => {
 																			: 1
 																	}
 																	{...labelProps}
+																	dx={labelPosition.dx}
 																>
 																	{customLabel ||
 																		`${getLabelFormat(
@@ -1126,6 +1176,7 @@ const DivergingBarHorizontal = () => {
 														fallback: colorScale(cat),
 														dataRender,
 													}),
+													data: tooltipData,
 												},
 												tooltip,
 												dataRender
@@ -1148,6 +1199,7 @@ const DivergingBarHorizontal = () => {
 														fallback: colorScale(tooltipData.category || ''),
 														dataRender,
 													}),
+													data: tooltipData,
 												},
 												tooltip,
 												dataRender

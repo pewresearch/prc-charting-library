@@ -18,8 +18,13 @@ import {
 	getTooltipHeaderFormat,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveNodeShapeColors,
 	legendCategoryShapeStyle,
 	useSize,
+	getLinearValueDataExtent,
+	hasExplicitAxisDomain,
+	resolveLinearScaleDomain,
+	resolveScaleNice,
 } from '@prc/charting-utilities';
 import { DiffColumn } from './DiffColumn';
 import {
@@ -155,12 +160,16 @@ const DotPlot = () => {
 	const dependentScale = useMemo(
 		() =>
 			scaleLinear({
-				// domain: [0, max(flattenedData, getDependentValue) || 0],
-				domain: dependentAxis.domain,
+				// Null/auto domains fall back to the data extent; visx would
+				// otherwise silently keep d3's default [0, 1].
+				domain: resolveLinearScaleDomain(
+					dependentAxis.domain,
+					getLinearValueDataExtent(flattenedData, categories as string[])
+				),
 				range: [0, innerWidth],
-				nice: true,
+				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[innerWidth, dependentAxis.domain]
+		[innerWidth, dependentAxis.domain, dependentAxis.nice, flattenedData, categories]
 	);
 	const colorScale = scaleOrdinal<string, string>({
 		domain: categories as string[],
@@ -255,6 +264,7 @@ const DotPlot = () => {
 			// than layout.height when groupBreaksActive, and the wrong bound causes
 			// clamping to misfire for lower groups.
 			innerHeight: actualContentHeight,
+			omitWithin: labelConfig.declutterOmitWithin,
 		},
 		!!(labelConfig.active && labelConfig.autoDeclutter)
 	);
@@ -301,7 +311,9 @@ const DotPlot = () => {
 			});
 		});
 		return points;
-	}, [groupPositioning, categories, dependentScale, getIndependentValue]);
+		// `data` is required: __tooltips / label customs live on row objects and
+		// must rebake voronoi tip text when Refine customizations change.
+	}, [groupPositioning, categories, dependentScale, getIndependentValue, data]);
 
 	const voronoiPlotHeight = actualContentHeight;
 
@@ -694,7 +706,7 @@ const DotPlot = () => {
 																			tooltip.deemphasizeSiblings &&
 																			tooltipData.category !== category
 																				? tooltip.deemphasizeOpacity
-																				: 1
+																				: (nodes.pointFillOpacity ?? 1)
 																		}
 																		onBlur={() => {
 																			tooltipTimeoutRef.current =
@@ -762,12 +774,19 @@ const DotPlot = () => {
 																		d,
 																		j
 																	);
-																	const { dx: dpDx, dy: dpDy } = getDeclutterOffset(
+																	const {
+																		dx: dpDx,
+																		dy: dpDy,
+																		hidden: dpHidden,
+																	} = getDeclutterOffset(
 																		dotPlotLabelOffsets,
 																		dpLabelId,
 																		0,
 																		0
 																	);
+																	if (dpHidden) {
+																		return null;
+																	}
 
 																	const dpDotY =
 																		groupScale(getIndependentValue(d)) || 0;
@@ -964,12 +983,14 @@ const DotPlot = () => {
 														d,
 														j
 													);
-													const { dx: edDpDx, dy: edDpDy } = getDeclutterOffset(
-														dotPlotLabelOffsets,
-														edDpLabelId,
-														0,
-														0
-													);
+													const {
+														dx: edDpDx,
+														dy: edDpDy,
+														hidden: edDpHidden,
+													} = getDeclutterOffset(dotPlotLabelOffsets, edDpLabelId, 0, 0);
+													if (edDpHidden) {
+														return null;
+													}
 
 													const edDpDotY = groupScale(getIndependentValue(d)) || 0;
 
@@ -1075,8 +1096,7 @@ const DotPlot = () => {
 							dangerouslySetInnerHTML={{
 								__html: tooltipData.tooltip
 									? tooltipData.tooltip
-									: getTooltipFormat(
-											{
+									: getTooltipFormat({
 												y: getDependentValue(tooltipData),
 												x: getIndependentValue(tooltipData).toString(),
 												category: tooltipData.category,
@@ -1085,7 +1105,7 @@ const DotPlot = () => {
 													fallback: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
-											},
+										data: tooltipData,},
 											tooltip,
 											dataRender
 										),

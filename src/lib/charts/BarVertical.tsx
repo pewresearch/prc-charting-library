@@ -18,10 +18,16 @@ import {
 	getSharedProps,
 	getFlattenedData,
 	getGroupedData,
+	createGroupBandScale,
+	linearBarSpan,
 	getGroupPositioningVertical,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
 	legendCategoryShapeStyle,
+	getLinearValueDataExtent,
+	hasExplicitAxisDomain,
+	resolveLinearScaleDomain,
+	resolveScaleNice,
 } from '@prc/charting-utilities';
 import {
 	StyledTooltip,
@@ -31,6 +37,7 @@ import {
 	BreakLine,
 	ClickableTicks,
 	ClickableLegend,
+	ZeroBaseline,
 } from '../overlays';
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
 import { NetValueLabels, buildNetValueItemsVerticalGrouped } from '../labels/NetValueLabels';
@@ -133,11 +140,16 @@ const BarVertical = () => {
 	const dependentScale = useMemo(
 		() =>
 			scaleLinear({
-				domain: dependentAxis.domain,
+				// Null/auto domains fall back to the data extent; visx would
+				// otherwise silently keep d3's default [0, 1].
+				domain: resolveLinearScaleDomain(
+					dependentAxis.domain,
+					getLinearValueDataExtent(flattenedData, dataRender.categories)
+				),
 				range: [innerHeight, 0],
-				nice: true,
+				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[innerHeight, dependentAxis.domain]
+		[innerHeight, dependentAxis.domain, dependentAxis.nice, flattenedData, dataRender.categories]
 	);
 	const colorScale = useMemo(
 		() =>
@@ -258,17 +270,17 @@ const BarVertical = () => {
 							const { group, data, startX, width, breakWidth } = groupPos;
 
 							// Create scales for this group
-							const groupScale = scaleBand<string>({
-								domain: data.map(getIndependentValue),
-								range: [startX, startX + width],
-								padding: bar.barGroupPadding,
-							});
+							const groupScale = createGroupBandScale(
+								data.map(getIndependentValue),
+								[startX, startX + width],
+								bar.barGroupPadding
+							);
 
-							const gridScale = scaleBand<string>({
-								domain: data.map(getIndependentValue),
-								range: [0, width],
-								padding: bar.barGroupPadding,
-							});
+							const gridScale = createGroupBandScale(
+								data.map(getIndependentValue),
+								[0, width],
+								bar.barGroupPadding
+							);
 
 							const groupKeyScale = scaleBand<string>({
 								domain: dataRender.categories,
@@ -346,16 +358,24 @@ const BarVertical = () => {
 																(customShapeStyles.opacity ?? 1) *
 																getSeriesOpacity(bar.key, isHighlighted);
 
+															const {
+																start: y,
+																size: height,
+																baseline,
+																valueAtStart,
+															} = linearBarSpan(dependentScale, bar.value);
+
 															return (
 																<g
 																	key={`${groupIndex}-${barGroup.index}-${bar.index}-${bar.key}`}
 																>
 																	<AnimatedBar
 																		x={bar.x}
-																		y={bar.y}
+																		y={y}
 																		tabIndex={0}
 																		width={Math.abs(bar.width)}
-																		height={bar.height}
+																		height={height}
+																		baseline={baseline}
 																		fill={shapeFill}
 																		stroke={shapeStroke}
 																		strokeWidth={shapeStrokeWidth}
@@ -408,7 +428,7 @@ const BarVertical = () => {
 																			};
 																			showTooltip({
 																				tooltipData: {
-																					x: independentValue,
+																					...data[i],
 																					y: bar.value,
 																					key: bar.key,
 																					customTooltip,
@@ -428,9 +448,9 @@ const BarVertical = () => {
 																				clearTimeout(tooltipTimeout);
 																			showTooltip({
 																				tooltipLeft: bar.x,
-																				tooltipTop: bar.y,
+																				tooltipTop: y,
 																				tooltipData: {
-																					x: independentValue,
+																					...data[i],
 																					y: bar.value,
 																					key: bar.key,
 																					customTooltip,
@@ -444,7 +464,7 @@ const BarVertical = () => {
 																		<AnimatedBarLabel
 																			key={`bar-group-label-${groupIndex}-${barGroup.index}-${barGroup.x0}`}
 																			{...positionBarLabel(
-																				bar,
+																				{ ...bar, y, height, valueAtStart },
 																				labels,
 																				labels.labelCutoff,
 																				'vertical',
@@ -537,6 +557,13 @@ const BarVertical = () => {
 								</Group>
 							);
 						})}
+						<ZeroBaseline
+							scale={dependentScale}
+							along="x"
+							length={actualContentWidth}
+							stroke={dependentAxis.axis.stroke}
+							strokeWidth={dependentAxis.axis.strokeWidth}
+						/>
 
 						{/* Render custom axis for grouped data */}
 						{independentAxis.active && (
@@ -545,11 +572,11 @@ const BarVertical = () => {
 									const { data, startX, width } = groupPos;
 
 									// Create individual scale for this group's axis
-									const groupScale = scaleBand<string>({
-										domain: data.map(getIndependentValue),
-										range: [startX, startX + width],
-										padding: bar.barGroupPadding,
-									});
+									const groupScale = createGroupBandScale(
+										data.map(getIndependentValue),
+										[startX, startX + width],
+										bar.barGroupPadding
+									);
 
 									return (
 										<AxisBottom
@@ -658,6 +685,7 @@ const BarVertical = () => {
 													fallback: colorScale(tooltipData.key),
 													dataRender,
 												}),
+												data: tooltipData,
 											},
 											tooltip,
 											dataRender

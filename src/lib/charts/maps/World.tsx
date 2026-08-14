@@ -49,6 +49,7 @@ import { Group } from '@visx/group';
 // STYLED COMPONENTS
 import styled from '@emotion/styled';
 import MapBubbleLayer from './MapBubbleLayer';
+import MapGeoPointLayer from './MapGeoPointLayer';
 import MapBubbleLegend from './MapBubbleLegend';
 
 const projection = geoRobinson;
@@ -231,24 +232,34 @@ const World = () => {
 	}, [hasCustomProjection, scaleX, scaleY, initialScale]);
 
 	const isBubbleMode = dataRender.mapStyle === 'bubble';
+	const isGeoPointsMode = dataRender.mapStyle === 'geo-points';
+	const isPointOverlayMode = isBubbleMode || isGeoPointsMode;
 	const mapCategory = dataRender.categories[0];
+	const geoPoints = map.geoPoints;
+	const sizeCategory = geoPoints?.sizeCategory || mapCategory;
 
 	const maxDataValue = useMemo(() => {
-		if (!isBubbleMode) return 0;
+		if (!isPointOverlayMode || geoPoints?.fixedRadius != null) return 0;
 		return Math.max(
 			0,
 			...flattenedData.map((d: FlatData) => {
-				const v = d[mapCategory];
+				const v = d[sizeCategory];
 				const n = typeof v === 'number' ? v : parseFloat(v as string);
 				return isNaN(n) ? 0 : Math.abs(n);
 			})
 		);
-	}, [isBubbleMode, flattenedData, mapCategory]);
+	}, [isPointOverlayMode, flattenedData, sizeCategory, geoPoints?.fixedRadius]);
+
+	const bubbleScaleMaxValue =
+		map.bubble?.maxValue && map.bubble.maxValue > 0 ? map.bubble.maxValue : maxDataValue || 1;
 
 	const bubbleRadiusScale = useMemo(
 		() =>
-			scaleSqrt({ domain: [0, maxDataValue], range: [map.bubble?.minRadius ?? 4, map.bubble?.maxRadius ?? 24] }),
-		[maxDataValue, map.bubble?.minRadius, map.bubble?.maxRadius]
+			scaleSqrt({
+				domain: [0, bubbleScaleMaxValue],
+				range: [map.bubble?.minRadius ?? 4, map.bubble?.maxRadius ?? 24],
+			}),
+		[bubbleScaleMaxValue, map.bubble?.minRadius, map.bubble?.maxRadius]
 	);
 
 	// GET SHARED LAYOUT PROPS
@@ -347,7 +358,7 @@ const World = () => {
 							</CustomProjection>
 							<CustomProjection<FeatureShape>
 								projection={projection}
-								data={mergedAndFilteredData}
+								data={isGeoPointsMode ? mergedData : mergedAndFilteredData}
 								scale={
 									hasCustomProjection
 										? responsiveScale * map.customScale
@@ -375,12 +386,12 @@ const World = () => {
 										const { id } = feature;
 										if (!coords || !id) return null;
 										const { properties } = feature;
-										const fill = isBubbleMode
+										const fill = isPointOverlayMode
 											? map.pathBackgroundFill
 											: getFill(id, properties, mapCategory);
 										const shapeIdentifier = properties.x || properties.name;
 										const shapeKey = generateElementKey(shapeIdentifier, mapCategory, null);
-										const customShapeStyles = isBubbleMode
+										const customShapeStyles = isPointOverlayMode
 											? {}
 											: shapes?.customStyles?.[shapeKey] || {};
 										const shapeFill = customShapeStyles.fill || fill;
@@ -403,7 +414,7 @@ const World = () => {
 										if (!meta) return null;
 										const { feature, path, id, properties, fill, shapeFill, customShapeStyles, i } =
 											meta;
-										const onPolyMouseMove = isBubbleMode
+										const onPolyMouseMove = isPointOverlayMode
 											? undefined
 											: (event: EventType) => {
 													if (tooltipTimeoutRef.current)
@@ -428,7 +439,7 @@ const World = () => {
 														tooltipLeft: c.x,
 													});
 												};
-										const onPolyMouseLeave = isBubbleMode
+										const onPolyMouseLeave = isPointOverlayMode
 											? undefined
 											: () => {
 													tooltipTimeoutRef.current = window.setTimeout(
@@ -436,7 +447,7 @@ const World = () => {
 														300
 													);
 												};
-										const { opacity, stroke, strokeWidth } = isBubbleMode
+										const { opacity, stroke, strokeWidth } = isPointOverlayMode
 											? { opacity: 1, stroke: map.pathStroke, strokeWidth: map.pathStrokeWidth }
 											: getTooltipMapDeemphasisProps(tooltip, map, id, tooltipData as FlatData);
 										const dataPoint = { ...properties, x: properties.x || properties.name };
@@ -448,16 +459,16 @@ const World = () => {
 												stroke={customShapeStyles.stroke || stroke}
 												opacity={customShapeStyles.opacity ?? opacity}
 												strokeWidth={customShapeStyles.strokeWidth ?? strokeWidth}
-												tabIndex={isBubbleMode ? -1 : 0}
+												tabIndex={isPointOverlayMode ? -1 : 0}
 												style={{
-													pointerEvents: isBubbleMode
+													pointerEvents: isPointOverlayMode
 														? 'none'
 														: wpEditorFunctions?.shapes
 															? 'all'
 															: undefined,
 												}}
 												onClick={(event: React.MouseEvent) => {
-													if (!isBubbleMode && wpEditorFunctions?.shapes?.onClick) {
+													if (!isPointOverlayMode && wpEditorFunctions?.shapes?.onClick) {
 														wpEditorFunctions.shapes.onClick(
 															dataPoint,
 															mapCategory,
@@ -566,6 +577,24 @@ const World = () => {
 													getName={(feature) => feature.properties?.name}
 												/>
 											)}
+											{isGeoPointsMode && features[0]?.projection && (
+												<MapGeoPointLayer
+													data={flattenedData}
+													project={(coords) => features[0].projection(coords)}
+													sizeCategory={sizeCategory}
+													labelColumn={geoPoints?.labelColumn}
+													latitudeColumn={geoPoints?.latitudeColumn}
+													longitudeColumn={geoPoints?.longitudeColumn}
+													bubbleRadiusScale={bubbleRadiusScale}
+													fill={colors[0]}
+													bubbleConfig={map.bubble}
+													svgRef={svgRef}
+													showTooltip={showTooltip}
+													hideTooltip={hideTooltip}
+													tooltipTimeoutRef={tooltipTimeoutRef}
+													fixedRadius={geoPoints?.fixedRadius}
+												/>
+											)}
 											{labelLayer}
 										</>
 									);
@@ -648,7 +677,7 @@ const World = () => {
 							</div>
 						</>
 					)}
-					{legend.active && !isBubbleMode && (
+					{legend.active && !isPointOverlayMode && (
 						<StyledLegend
 							legend={legend}
 							layoutWidth={width}
@@ -710,7 +739,7 @@ const World = () => {
 							)}
 						</StyledLegend>
 					)}
-					{legend.active && isBubbleMode && (
+					{legend.active && isPointOverlayMode && (
 						<StyledLegend
 							legend={legend}
 							layoutWidth={width}
@@ -720,7 +749,7 @@ const World = () => {
 						>
 							<MapBubbleLegend
 								bubbleRadiusScale={bubbleRadiusScale}
-								maxDataValue={maxDataValue}
+								maxDataValue={bubbleScaleMaxValue}
 								fill={colors[0]}
 								stroke={map.bubble?.stroke}
 								strokeWidth={map.bubble?.strokeWidth}
@@ -765,13 +794,12 @@ const World = () => {
 								dangerouslySetInnerHTML={{
 									__html: tooltipData.customTooltip
 										? tooltipData.customTooltip
-										: getTooltipFormat(
-												{
+										: getTooltipFormat({
 													x: tooltipData.x,
 													y: tooltipData.y,
 													category: tooltipData.key,
 													color: tooltipData.fill,
-												},
+										data: tooltipData,},
 												tooltip,
 												dataRender
 											),

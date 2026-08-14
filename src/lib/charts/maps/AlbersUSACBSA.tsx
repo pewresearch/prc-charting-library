@@ -569,13 +569,12 @@ const AlbersUSACBSA = () => {
 						dangerouslySetInnerHTML={{
 							__html: tooltipData.customTooltip
 								? tooltipData.customTooltip
-								: getTooltipFormat(
-										{
+								: getTooltipFormat({
 											x: tooltipData.x,
 											y: tooltipData.y,
 											category: tooltipData.category,
 											color: tooltipData.fill,
-										},
+										data: tooltipData,},
 										tooltip,
 										dataRender
 									),

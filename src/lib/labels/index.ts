@@ -14,6 +14,7 @@ export {
 	forceRectCollide,
 	getDirectLabelOffsetFromCustom,
 	getDirectLabelScaleFactors,
+	getFirstLastLabelPlacement,
 	getLabelMaxWidth,
 	getLineLabelContent,
 	getSeriesYAtPixelX,
@@ -53,4 +54,5 @@ export {
 export type { NetValueLabelItem } from './NetValueLabels';
 export { OnLineSeriesLabel } from './OnLineSeriesLabel';
 export { getStackedSeriesDependentValue, useDirectSeriesLegend } from './useDirectSeriesLegend';
+export { getOmittedDirectLegendCategories } from './getOmittedDirectLegendCategories';
 export { getDeclutterOffset, useLabelDeclutter } from './useLabelDeclutter';

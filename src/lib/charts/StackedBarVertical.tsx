@@ -10,6 +10,7 @@ import {
 	getCustomTooltip,
 	getFlattenedData,
 	getGroupedData,
+	createGroupBandScale,
 	getGroupPositioningVertical,
 	getGroupValue,
 	getLabelFormat,
@@ -23,6 +24,10 @@ import {
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
 	useSize,
+	getLinearValueDataExtent,
+	hasExplicitAxisDomain,
+	resolveLinearScaleDomain,
+	resolveScaleNice,
 } from '@prc/charting-utilities';
 import {
 	AnnotationsLayer,
@@ -130,11 +135,16 @@ const StackedBarVertical = () => {
 	const dependentScale = useMemo(
 		() =>
 			scaleLinear({
-				domain: dependentAxis.domain,
+				// Null/auto domains fall back to the stacked data extent;
+				// visx would otherwise silently keep d3's default [0, 1].
+				domain: resolveLinearScaleDomain(
+					dependentAxis.domain,
+					getLinearValueDataExtent(flattenedData, dataRender.categories, { stacked: true })
+				),
 				range: [0, innerWidth],
-				nice: true,
+				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[innerWidth, dependentAxis.domain]
+		[innerWidth, dependentAxis.domain, dependentAxis.nice, flattenedData, dataRender.categories]
 	);
 	const colorScale = scaleOrdinal<string, string>({
 		domain: dataRender.categories,
@@ -228,17 +238,17 @@ const StackedBarVertical = () => {
 							} = groupPos;
 
 							// Create scales for this group
-							const groupScale = scaleBand<string>({
-								domain: groupData.map(getIndependentValue),
-								range: [startX, startX + groupWidth],
-								padding: barConfig.barPadding,
-							});
+							const groupScale = createGroupBandScale(
+								groupData.map(getIndependentValue),
+								[startX, startX + groupWidth],
+								barConfig.barPadding
+							);
 
-							const gridScale = scaleBand<string>({
-								domain: groupData.map(getIndependentValue),
-								range: [0, groupWidth],
-								padding: barConfig.barPadding,
-							});
+							const gridScale = createGroupBandScale(
+								groupData.map(getIndependentValue),
+								[0, groupWidth],
+								barConfig.barPadding
+							);
 
 							return (
 								<Group key={`group-${groupIndex}-${group}`}>
@@ -369,7 +379,7 @@ const StackedBarVertical = () => {
 																	};
 																	showTooltip({
 																		tooltipData: {
-																			x: barData.x,
+																			...barData,
 																			y: barValue,
 																			category,
 																			tooltip: customTooltip,
@@ -383,7 +393,7 @@ const StackedBarVertical = () => {
 																	if (tooltipTimeout) clearTimeout(tooltipTimeout);
 																	showTooltip({
 																		tooltipData: {
-																			x: barData.x,
+																			...barData,
 																			y: barValue,
 																			category,
 																			tooltip: customTooltip,
@@ -504,11 +514,11 @@ const StackedBarVertical = () => {
 									const { data: groupData, startX, width: groupWidth } = groupPos;
 
 									// Create individual scale for this group's axis
-									const groupScale = scaleBand<string>({
-										domain: groupData.map(getIndependentValue),
-										range: [startX, startX + groupWidth],
-										padding: barConfig.barPadding,
-									});
+									const groupScale = createGroupBandScale(
+										groupData.map(getIndependentValue),
+										[startX, startX + groupWidth],
+										barConfig.barPadding
+									);
 
 									return (
 										<AxisBottom
@@ -619,6 +629,7 @@ const StackedBarVertical = () => {
 													fallback: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
+												data: tooltipData,
 											},
 											tooltip,
 											dataRender

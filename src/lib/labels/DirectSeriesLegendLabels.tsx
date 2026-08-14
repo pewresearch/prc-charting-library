@@ -36,7 +36,10 @@ export function DirectSeriesLegendLabels({
 	return (
 		<Group top={padding.top} left={padding.left}>
 			{inputs.map((seriesInput, seriesIndex) => {
-				const { dx, dy } = getDeclutterOffset(offsets, seriesInput.id, 0, 0);
+				const { dx, dy, hidden } = getDeclutterOffset(offsets, seriesInput.id, 0, 0);
+				if (hidden) {
+					return null;
+				}
 				const customEntry = legend.customLabels?.[seriesInput.category];
 				const seriesColor = resolveCategoryColor({
 					category: seriesInput.category,

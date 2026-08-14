@@ -11,9 +11,14 @@
  * - Tooltip handlers live on the bubbles, not the polygons.
  * - Radii are scaleSqrt so perceived circle area is proportional to value.
  * - String data values are coerced via parseFloat before comparison.
+ * - Bubbles are `AnimatedCircle`s, so a data change tweens radius and position
+ *   rather than cutting. Keyed by feature id so the same place keeps its circle
+ *   across updates. With animation off (the default) these render exactly as the
+ *   static circles they replaced.
  */
 import { EventType } from '@visx/event/lib/types';
 import { FeatureShape, getCustomTooltip, getLocalPoint } from '@prc/charting-utilities';
+import { AnimatedCircle } from '../../animation';
 import { getDisplayCentroid } from './getDisplayCentroid';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -122,7 +127,7 @@ const MapBubbleLayer = ({
 
 	return (
 		<>
-			{bubbles.map((item, i) => {
+			{bubbles.map((item) => {
 				const { id, properties, coords, val, name } = item as any;
 				const r = bubbleRadiusScale(Math.abs(val));
 
@@ -176,8 +181,11 @@ const MapBubbleLayer = ({
 				};
 
 				return (
-					<circle
-						key={`bubble-${id}-${i}`}
+					<AnimatedCircle
+						// Feature id, not the index into the value-sorted list: that
+						// order changes with the data, and an index-based key would
+						// remount every bubble and lose the tween.
+						key={`bubble-${id}`}
 						cx={coords[0]}
 						cy={coords[1]}
 						r={r}

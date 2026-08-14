@@ -1,5 +1,5 @@
 /**
- * Presets barrel — populated in Phase 1 (Templates/ rename).
- * @see docs/LIBRARY-REORG.md
+ * Presets barrel. Example chart configs are imported directly by path;
+ * nothing is re-exported here.
  */
 export {};

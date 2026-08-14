@@ -18,6 +18,10 @@ import {
 	generateElementKey,
 	getLabelFill,
 	DEFAULT_FONT_FAMILY,
+	getLinearValueDataExtent,
+	hasExplicitAxisDomain,
+	resolveLinearScaleDomain,
+	resolveScaleNice,
 } from '@prc/charting-utilities';
 
 import type { FlatData, Size, BaseConfig, TableData } from '@prc/charting-utilities';
@@ -65,11 +69,16 @@ const Radar = () => {
 	const radiusScale = useMemo(
 		() =>
 			scaleLinear({
-				domain: dependentAxis.domain,
+				// Null/auto domains fall back to the data extent; visx would
+				// otherwise silently keep d3's default [0, 1].
+				domain: resolveLinearScaleDomain(
+					dependentAxis.domain,
+					getLinearValueDataExtent(flattenedData, categories)
+				),
 				range: [0, radius],
-				nice: true,
+				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[dependentAxis.domain, radius]
+		[dependentAxis.domain, dependentAxis.nice, radius, flattenedData, categories]
 	);
 
 	const colorScale = useMemo(
@@ -391,13 +400,12 @@ const Radar = () => {
 						dangerouslySetInnerHTML={{
 							__html:
 								getCustomTooltip(tooltipData, 'polygon').body ||
-								getTooltipFormat(
-									{
+								getTooltipFormat({
 										x: tooltipData[dataRender.x],
 										y: null,
 										category: 'polygon',
 										color: colorScale(String(tooltipData[dataRender.x])),
-									},
+										data: tooltipData,},
 									tooltip,
 									dataRender
 								),

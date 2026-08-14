@@ -846,6 +846,7 @@ const TreemapChart = () => {
 										y: tooltipData.value,
 										category: valueKey,
 										color: tooltipData.color,
+										data: (tooltipData.datum ?? tooltipData) as Record<string, unknown>,
 									},
 									tooltip,
 									dataRender

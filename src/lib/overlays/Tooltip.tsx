@@ -9,11 +9,22 @@ type TooltipProps = {
 	children: string | React.ReactNode | null;
 	cursorX?: number;
 	cursorY?: number;
+	/**
+	 * Pins the box horizontally while `cursorY` still drives the vertical, for
+	 * the unified tooltip's snapped column. Same SVG-relative space as
+	 * `cursorX`: the caller adds the plot's left padding.
+	 */
+	anchorX?: number;
 	containerRef?: React.RefObject<HTMLDivElement | SVGSVGElement | null>;
 	isMobile?: boolean; // Whether to use mobile tooltip (TooltipWithBounds) or desktop (portal)
 };
 
-// Calculate optimal tooltip position relative to cursor
+// Calculate optimal tooltip position relative to cursor.
+//
+// Pre-existing and deliberately left alone (see the unified tooltip phase 3
+// notes): the flip below tests a hard-coded 200×20 estimate rather than the
+// measured box, and against the viewport rather than the plot; and the
+// left-edge guard assigns `left` back to `cursorX`, the value it already had.
 const calculateTooltipPosition = (
 	cursorX: number,
 	cursorY: number,
@@ -60,6 +71,7 @@ export const StyledTooltip = ({
 	children,
 	cursorX,
 	cursorY,
+	anchorX,
 	containerRef,
 	isMobile = false,
 }: TooltipProps) => {
@@ -98,12 +110,16 @@ export const StyledTooltip = ({
 		zIndex: 9999,
 	};
 
+	// A pinned anchor replaces only the horizontal input, so the edge flip still
+	// applies to it and `cursorY` still drives the vertical.
+	const horizontalX = anchorX !== undefined ? anchorX : cursorX;
+
 	// On mobile, use TooltipWithBounds - exactly as original implementation
 	if (isMobile) {
 		const finalPosition =
-			cursorX !== undefined && cursorY !== undefined
+			horizontalX !== undefined && cursorY !== undefined
 				? calculateTooltipPosition(
-						cursorX,
+						horizontalX,
 						cursorY,
 						typeof width === 'number' ? width : 200,
 						typeof minHeight === 'number' ? minHeight : 50,
@@ -132,14 +148,14 @@ export const StyledTooltip = ({
 	// On desktop, use portal for better positioning in constrained containers
 	// Portal needs viewport coordinates, so convert SVG-relative to viewport
 	const finalPosition =
-		cursorX !== undefined && cursorY !== undefined
+		horizontalX !== undefined && cursorY !== undefined
 			? (() => {
 					// Convert SVG-relative cursor coordinates to viewport coordinates
 					if (!containerRef?.current) {
-						return { top: cursorY, left: cursorX }; // Fallback
+						return { top: cursorY, left: horizontalX }; // Fallback
 					}
 					const rect = containerRef.current.getBoundingClientRect();
-					const viewportX = cursorX + rect.left;
+					const viewportX = horizontalX + rect.left;
 					const viewportY = cursorY + rect.top;
 					return calculateTooltipPosition(
 						viewportX,
@@ -152,7 +168,12 @@ export const StyledTooltip = ({
 				})()
 			: containerRef?.current
 				? (() => {
-						// Convert SVG-relative coordinates to viewport coordinates
+						// Convert SVG-relative coordinates to viewport coordinates.
+						//
+						// Pre-existing and deliberately left alone: this branch
+						// never adds the plot padding, so a data-anchored caller
+						// such as StackedArea is offset by it. `Line` masks it by
+						// always sending cursor coordinates.
 						const rect = containerRef.current.getBoundingClientRect();
 						return {
 							top: top + rect.top,

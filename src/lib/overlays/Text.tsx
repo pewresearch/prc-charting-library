@@ -3,6 +3,8 @@ import type {
 	BaseConfig,
 	Layout,
 	MetadataText,
+	PanelLike,
+	PanelRect,
 	TableData,
 	TextAnnotation,
 } from '@prc/charting-utilities';
@@ -11,11 +13,18 @@ import {
 	DataContext,
 	decodeHtmlEntities,
 	DEFAULT_FONT_FAMILY,
+	resolvePanelRect,
 } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
 import { useContext, useEffect, useRef, useState } from 'react';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
+import {
+	getPositioningScale,
+	scalePositionToDisplay,
+	scalePositionToLayout,
+	type PositioningScale,
+} from './getPositioningScale';
 
 // Helper function to break text into lines by word boundaries
 const wordWrap = (text: string, maxWidth: number, fontSize: number, fontFamily: string) => {
@@ -172,6 +181,12 @@ export const Annotation = ({
 	height,
 	layout,
 	chartWidth,
+	/**
+	 * When set (e.g. panel-anchored SM annotations), use shared scale helpers
+	 * instead of width/layout.width. Origin should be 0 if a parent <g> already
+	 * translated to the panel cell.
+	 */
+	positioningScale,
 }: {
 	annotation: TextAnnotation;
 	onClick?: (id: string) => void;
@@ -179,6 +194,7 @@ export const Annotation = ({
 	height: number;
 	layout: Layout;
 	chartWidth: number;
+	positioningScale?: Pick<PositioningScale, 'widthRatio' | 'heightRatio' | 'originX' | 'originY'>;
 }) => {
 	const {
 		id,
@@ -216,16 +232,33 @@ export const Annotation = ({
 	const wpEditorFunctions = context?.wpEditorFunctions;
 	const renderedFontFamily = fontFamily?.trim() ? fontFamily : DEFAULT_FONT_FAMILY;
 
-	// Scale annotation coordinates proportionally with the chart dimensions.
-	// Computed before hooks so displayX/displayY can be used as initial state.
-	const displayX = (originalX * width) / layout.width;
-	const displayY = (originalY * height) / layout.height;
+	// Scale annotation coordinates: shared scale (panel) or classic width/layout ratio.
+	const display = positioningScale
+		? scalePositionToDisplay(originalX, originalY, positioningScale)
+		: {
+				x: (originalX * width) / layout.width,
+				y: (originalY * height) / layout.height,
+			};
+	const displayX = display.x;
+	const displayY = display.y;
 
-	// Track position during drag
+	const toLayout = (dx: number, dy: number) => {
+		if (positioningScale) {
+			return scalePositionToLayout(dx, dy, positioningScale);
+		}
+		return {
+			x: (dx * layout.width) / width,
+			y: (dy * layout.height) / height,
+		};
+	};
+
+	// Track position during drag (ref avoids stale deltas under rapid SM re-renders).
 	const [dragPosition, setDragPosition] = useState({
 		x: displayX,
 		y: displayY,
 	});
+	const dragPositionRef = useRef(dragPosition);
+	const isDraggingRef = useRef(false);
 	// Ref to detect whether a drag occurred so we can suppress the post-drag click.
 	// Not reset in handleDragStop — reset inside onClick so it's still true when
 	// the click event fires after mouseup.
@@ -234,8 +267,10 @@ export const Annotation = ({
 	// Must point at the underlying <g>, so it's passed to <Group> via innerRef.
 	const dragRef = useRef<SVGGElement>(null);
 
-	// Update position when original coordinates change (but not during drag)
+	// Sync from props when not dragging
 	useEffect(() => {
+		if (isDraggingRef.current) return;
+		dragPositionRef.current = { x: displayX, y: displayY };
 		setDragPosition({ x: displayX, y: displayY });
 	}, [displayX, displayY]);
 
@@ -247,40 +282,34 @@ export const Annotation = ({
 		// are never flagged as drags.
 		hasDraggedRef.current = true;
 
-		// data.deltaX and data.deltaY give us the movement since last event
-		const newDisplayX = dragPosition.x + data.deltaX;
-		const newDisplayY = dragPosition.y + data.deltaY;
+		const newDisplayX = dragPositionRef.current.x + data.deltaX;
+		const newDisplayY = dragPositionRef.current.y + data.deltaY;
+		const next = { x: newDisplayX, y: newDisplayY };
+		dragPositionRef.current = next;
+		setDragPosition(next);
 
-		// No boundary constraints - allow free positioning
-		setDragPosition({ x: newDisplayX, y: newDisplayY });
-
-		// Convert to layout coordinates and notify editor
-		const layoutX = (newDisplayX * layout.width) / width;
-		const layoutY = (newDisplayY * layout.height) / height;
-
+		const layoutPos = toLayout(newDisplayX, newDisplayY);
 		if (id && wpEditorFunctions?.annotations?.onDrag) {
-			wpEditorFunctions.annotations.onDrag(id, layoutX, layoutY, true);
+			wpEditorFunctions.annotations.onDrag(id, layoutPos.x, layoutPos.y, true);
 		}
 	};
 
 	const handleDragStart = () => {
 		// Reset so a fresh click after a previous drag isn't suppressed.
 		hasDraggedRef.current = false;
+		isDraggingRef.current = true;
 		if (id && wpEditorFunctions?.annotations?.onDragStart) {
 			wpEditorFunctions.annotations.onDragStart(id);
 		}
 	};
 
 	const handleDragStop = () => {
-		const finalDisplayX = dragPosition.x;
-		const finalDisplayY = dragPosition.y;
-
-		// Convert to layout coordinates and notify editor
-		const finalLayoutX = (finalDisplayX * layout.width) / width;
-		const finalLayoutY = (finalDisplayY * layout.height) / height;
+		const { x: finalDisplayX, y: finalDisplayY } = dragPositionRef.current;
+		const layoutPos = toLayout(finalDisplayX, finalDisplayY);
+		isDraggingRef.current = false;
 
 		if (id && wpEditorFunctions?.annotations?.onDragEnd) {
-			wpEditorFunctions.annotations.onDragEnd(id, finalLayoutX, finalLayoutY);
+			wpEditorFunctions.annotations.onDragEnd(id, layoutPos.x, layoutPos.y);
 		}
 	};
 
@@ -441,6 +470,13 @@ export const AnnotationsLayer = ({
 	layout,
 	chartWidth, // default to 640px
 	onClick,
+	panels,
+	panelRects,
+	designPanelRects,
+	gridOffset,
+	titlePad,
+	leftInset,
+	bottomInset,
 }: {
 	config: AnnotationsConfig;
 	width: number;
@@ -448,6 +484,14 @@ export const AnnotationsLayer = ({
 	layout: Layout;
 	chartWidth: number;
 	onClick?: (id: string) => void;
+	/** Small-multiples panels (for `panel` / `panel-inner`). */
+	panels?: PanelLike[];
+	panelRects?: PanelRect[];
+	designPanelRects?: PanelRect[];
+	gridOffset?: { x: number; y: number };
+	titlePad?: number;
+	leftInset?: number;
+	bottomInset?: number;
 }) => {
 	if (!config.active || !config.items || config.items.length === 0) return null;
 
@@ -471,13 +515,38 @@ export const AnnotationsLayer = ({
 		positioningContext: annotation.positioningContext || defaultPositioningContext,
 	}));
 
-	// Split annotations into two groups based on positioningContext
+	// Split annotations into groups based on positioningContext
 	const chartContextAnnotations = annotationsWithPositioningContext.filter(
 		(annotation) => annotation.positioningContext === 'chart'
 	);
 	const innerContextAnnotations = annotationsWithPositioningContext.filter(
 		(annotation) => annotation.positioningContext === 'inner'
 	);
+	const panelAnchoredAnnotations = annotationsWithPositioningContext.filter(
+		(annotation) => annotation.positioningContext === 'panel' || annotation.positioningContext === 'panel-inner'
+	);
+
+	// Group panel-anchored items by panelKey for one translate origin per cell.
+	const panelKeys = Array.from(
+		new Set(
+			panelAnchoredAnnotations
+				.map((annotation) => annotation.panelKey)
+				.filter((key): key is string => typeof key === 'string' && key.length > 0)
+		)
+	);
+
+	const panelScaleBase = {
+		layout,
+		chartWidth,
+		chartHeight: height,
+		panels,
+		panelRects,
+		designPanelRects,
+		gridOffset,
+		titlePad,
+		leftInset,
+		bottomInset,
+	};
 
 	return (
 		<g className="cb__annotations-layer">
@@ -508,6 +577,54 @@ export const AnnotationsLayer = ({
 					/>
 				))}
 			</g>
+
+			{/* Annotations positioned relative to a small-multiples panel cell or plot */}
+			{panelKeys.flatMap((panelKey) => {
+				if (
+					!resolvePanelRect({
+						panels,
+						rects: panelRects,
+						panelKey,
+					})
+				) {
+					return [];
+				}
+
+				const contexts = ['panel', 'panel-inner'] as const;
+				return contexts.flatMap((context) => {
+					const items = panelAnchoredAnnotations.filter(
+						(annotation) => annotation.panelKey === panelKey && annotation.positioningContext === context
+					);
+					if (!items.length) {
+						return [];
+					}
+					const scale = getPositioningScale({
+						...panelScaleBase,
+						context,
+						panelKey,
+					});
+					const localScale = { ...scale, originX: 0, originY: 0 };
+					return (
+						<g
+							key={`panel-annotations-${panelKey}-${context}`}
+							transform={`translate(${scale.originX}, ${scale.originY})`}
+						>
+							{items.map((annotation) => (
+								<Annotation
+									key={annotation.id}
+									annotation={annotation}
+									onClick={onClick}
+									width={chartWidth}
+									height={height}
+									layout={layout}
+									chartWidth={chartWidth}
+									positioningScale={localScale}
+								/>
+							))}
+						</g>
+					);
+				});
+			})}
 		</g>
 	);
 };

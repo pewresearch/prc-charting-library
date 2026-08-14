@@ -7,17 +7,16 @@ import {
 	scaleAxisNumTicks,
 	useSize,
 	getCustomTooltip,
-	getCustomLabel,
-	getCustomLabelText,
 	isLabelVisible,
 	getGroupValue,
 	generateElementKey,
+	shouldShowLinePoint,
 } from '@prc/charting-utilities';
+import { useLineFamilyScales } from '../scales';
 import {
 	getAxisProps,
 	getChartDimensions,
 	getGridProps,
-	getLabelFormat,
 	getLabelProps,
 	getVoronoiProps,
 	getTooltipFormat,
@@ -27,6 +26,7 @@ import {
 	getSharedProps,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveNodeShapeColors,
 	legendCategoryShapeStyle,
 } from '@prc/charting-utilities';
 import { newDateByFormat, getLabelFill } from '@prc/charting-utilities';
@@ -38,10 +38,17 @@ import {
 	DrawingsLayer,
 	ClickableTicks,
 	ClickableLegend,
+	ZeroBaseline,
 } from '../overlays';
 import { AnimatedArea, AnimatedCircle, AnimatedLinePath, AnimatedLabel, TransitionProvider } from '../animation';
 import { DraggableLabel } from '../labels';
-import { DirectSeriesLegendLabels, getStackedSeriesDependentValue, useDirectSeriesLegend } from '../labels';
+import {
+	DirectSeriesLegendLabels,
+	getFirstLastLabelPlacement,
+	getLineLabelContent,
+	getStackedSeriesDependentValue,
+	useDirectSeriesLegend,
+} from '../labels';
 // TYPES
 import type { FlatData } from '@prc/charting-utilities';
 import type { Size } from '@prc/charting-utilities';
@@ -53,11 +60,11 @@ import * as Curve from '@visx/curve';
 import { Group } from '@visx/group';
 import { GridRows, GridColumns } from '@visx/grid';
 import { AxisBottom, AxisLeft } from '@visx/axis';
-import { scaleTime, scaleLinear, scaleOrdinal } from '@visx/scale';
+import { scaleOrdinal } from '@visx/scale';
 import { useTooltip } from '@visx/tooltip';
 import { voronoi, VoronoiPolygon } from '@visx/voronoi';
 import { LegendOrdinal } from '@visx/legend';
-import { max, extent, ascending, descending } from 'd3-array';
+import { max, ascending, descending } from 'd3-array';
 import styled from '@emotion/styled';
 
 // Animated stacked-area marker (PRC-17 slice 3f). Its cx/cy are fed from the
@@ -156,6 +163,7 @@ const StackedArea = () => {
 						if (d[c]) {
 							const { body: _areaTip, header: _areaHdr } = getCustomTooltip(d, c);
 							return {
+								...d,
 								x: d.x,
 								y: d[c],
 								ySum: sumOfYs,
@@ -192,35 +200,27 @@ const StackedArea = () => {
 
 	const getDependentValue = useCallback((d: FlatData) => d[dataRender.y] as number, [dataRender]);
 
-	// SCALES, VORONOI, INTERPOLATION
-	const timeScale = useMemo(
-		() =>
-			scaleTime({
-				domain: extent(flattenedData, getIndependentValue) as [Date, Date],
-				range: [0, innerWidth],
-			}),
-		[innerWidth, flattenedData, getIndependentValue]
+	const getStackedDependentDomainExtent = useCallback(
+		(rows: FlatData[]) => {
+			const maxStack = max(rows, (row) =>
+				dataRender.categories.reduce((acc, category) => acc + Number(row[category] || 0), 0)
+			) as number;
+			return [0, maxStack || 0] as [number, number];
+		},
+		[dataRender.categories]
 	);
-	const linearScale = useMemo(
-		() =>
-			scaleLinear({
-				domain: independentAxis.domain
-					? independentAxis.domain
-					: [0, max(flattenedData, getIndependentValue) || 0],
-				range: [0, innerWidth],
-			}),
-		[innerWidth, independentAxis, flattenedData, getIndependentValue]
-	);
-	const independentScale = independentAxis.scale === 'time' ? timeScale : linearScale;
-	const dependentScale = useMemo(
-		() =>
-			scaleLinear({
-				domain: dependentAxis.domain,
-				range: [innerHeight, 0],
-				nice: true,
-			}),
-		[innerHeight, flattenedData, dependentAxis, getDependentValue]
-	);
+
+	const { independentScale, dependentScale } = useLineFamilyScales({
+		independentAxis,
+		dependentAxis,
+		innerWidth,
+		innerHeight,
+		flattenedData,
+		getIndependentValue,
+		getDependentValue,
+		getDependentDomainExtent: getStackedDependentDomainExtent,
+	});
+
 	const colorScale = useMemo(
 		() =>
 			scaleOrdinal<string, string>({
@@ -299,20 +299,21 @@ const StackedArea = () => {
 		[dataRender.categories]
 	);
 
-	const { isDirectLegend, directSeriesDeclutterInputs, directSeriesOffsets, labelScales } = useDirectSeriesLegend({
-		legend,
-		labels,
-		dataRender,
-		flattenedData,
-		innerWidth,
-		innerHeight,
-		padding,
-		layout,
-		independentScale,
-		dependentScale,
-		getIndependentValue,
-		getSeriesDependentValue,
-	});
+	const { isDirectLegend, directSeriesDeclutterInputs, directSeriesOffsets, omittedCategories, labelScales } =
+		useDirectSeriesLegend({
+			legend,
+			labels,
+			dataRender,
+			flattenedData,
+			innerWidth,
+			innerHeight,
+			padding,
+			layout,
+			independentScale,
+			dependentScale,
+			getIndependentValue,
+			getSeriesDependentValue,
+		});
 
 	// TOOLTIP AND HANDLERS
 	const {
@@ -391,9 +392,8 @@ const StackedArea = () => {
 		const groupValue = getGroupValue(d, dataRender);
 		const shapeKey = generateElementKey(d.x, category, groupValue);
 		const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-		const defaultColor = nodes.pointFill === 'inherit' ? seriesColor : 'white';
-		const defaultStroke = seriesColor;
-		const shapeFill = customShapeStyles.fill || defaultColor;
+		const { fill: defaultFill, stroke: defaultStroke } = resolveNodeShapeColors(nodes, seriesColor);
+		const shapeFill = customShapeStyles.fill || defaultFill;
 		const shapeStroke = customShapeStyles.stroke || defaultStroke;
 		const shapeStrokeWidth = customShapeStyles.strokeWidth ?? nodes.pointStrokeWidth;
 		const shapeOpacity = (customShapeStyles.opacity ?? 1) * seriesOpacity;
@@ -415,13 +415,13 @@ const StackedArea = () => {
 				}}
 				onClick={(event: React.MouseEvent) => {
 					if (wpEditorFunctions?.shapes?.onClick) {
-						wpEditorFunctions.shapes.onClick(d, category, defaultColor, event.currentTarget, groupValue);
+						wpEditorFunctions.shapes.onClick(d, category, seriesColor, event.currentTarget, groupValue);
 					}
 				}}
 				fillOpacity={
 					tooltipData && tooltipVisible && tooltip.deemphasizeSiblings && tooltipData.category !== category
 						? tooltip.deemphasizeOpacity
-						: 1
+						: (nodes.pointFillOpacity ?? 1)
 				}
 				tabIndex={wpEditorFunctions?.shapes ? 0 : undefined}
 				onFocus={() => {
@@ -431,7 +431,7 @@ const StackedArea = () => {
 						tooltipLeft: independentScale(getIndependentValue(d)),
 						tooltipTop: dependentScale(ySum),
 						tooltipData: {
-							x: d.x,
+							...d,
 							y: d[category],
 							category,
 							color: seriesColor,
@@ -482,6 +482,13 @@ const StackedArea = () => {
 						)}
 						<GridRows {...dependentGridProps} />
 						<GridColumns {...independentGridProps} />
+						<ZeroBaseline
+							scale={dependentScale}
+							along="x"
+							length={innerWidth}
+							stroke={dependentAxis.axis.stroke}
+							strokeWidth={dependentAxis.axis.strokeWidth}
+						/>
 						{voronoiConfig.active &&
 							voronoiLayout
 								.polygons()
@@ -591,6 +598,17 @@ const StackedArea = () => {
 											{(glide) =>
 												line.showPoints
 													? filteredStackData.map((s: any, j: number) => {
+															if (
+																!shouldShowLinePoint({
+																	showPoints: line.showPoints,
+																	showFirstLastPointsOnly:
+																		line.showFirstLastPointsOnly,
+																	index: j,
+																	pointCount: filteredStackData.length,
+																})
+															) {
+																return null;
+															}
 															const { cx, cy } = glide.pointAt(j);
 															return renderStackMarker(
 																s,
@@ -624,13 +642,13 @@ const StackedArea = () => {
 									(d: FlatData) => d[category] || d[category] !== ''
 								);
 								return filteredData?.map((d: FlatData, j: number) => {
+									if (omittedCategories.has(category)) {
+										return null;
+									}
 									// Check visibility - don't render if hidden
 									if (!isLabelVisible(d, category)) {
 										return null;
 									}
-
-									const customLabelText = getCustomLabelText(d, category);
-									const customLabel = customLabelText || getCustomLabel(d, category);
 
 									// Calculate stacked Y position (sum of all previous categories + current)
 									const ySum = dataRender.categories
@@ -639,24 +657,25 @@ const StackedArea = () => {
 											return Number(acc) + Number(d[curr]);
 										}, 0);
 
-									// Generate default label
-									const defaultLabel = getLabelFormat(d[category], category, labels, null);
-
-									// Determine label content
-									let labelContent = '';
-									if (customLabel) {
-										labelContent = customLabel;
-									} else if (
-										labels.showFirstLastPointsOnly &&
-										(j === 0 || j === filteredData.length - 1)
-									) {
-										labelContent = defaultLabel;
-									} else if (!labels.showFirstLastPointsOnly) {
-										labelContent = defaultLabel;
-									}
+									const { content: labelContent, defaultLabel } = getLineLabelContent(
+										d,
+										category,
+										j,
+										filteredData.length,
+										labels
+									);
 
 									// Don't render if no content
 									if (!labelContent) return null;
+
+									const placement = getFirstLastLabelPlacement({
+										pointIndex: j,
+										pointCount: filteredData.length,
+										labels,
+										fallbackTextAnchor:
+											(labelProps as { textAnchor?: 'start' | 'middle' | 'end' }).textAnchor ??
+											labels.textAnchor,
+									});
 
 									return (
 										<AnimatedLabel
@@ -665,8 +684,8 @@ const StackedArea = () => {
 											y={dependentScale(ySum)}
 											dataPoint={d}
 											category={category}
-											defaultDx={labels.labelPositionDX}
-											defaultDy={labels.labelPositionDY}
+											defaultDx={placement.defaultDx}
+											defaultDy={placement.defaultDy}
 											chartInnerWidth={innerWidth}
 											chartInnerHeight={innerHeight}
 											defaultLabel={defaultLabel}
@@ -675,6 +694,7 @@ const StackedArea = () => {
 												seriesColor: colorScale(category),
 											})}
 											{...labelProps}
+											textAnchor={placement.textAnchor}
 										>
 											{labelContent}
 										</AnimatedLabel>
@@ -743,8 +763,19 @@ const StackedArea = () => {
 									(d: FlatData) => d[category] || d[category] !== ''
 								);
 								return filteredData?.map((d: FlatData, j: number) => {
-									const customLabelText = getCustomLabelText(d, category);
-									const customLabel = customLabelText || getCustomLabel(d, category);
+									if (omittedCategories.has(category)) {
+										return null;
+									}
+									const { content: labelContent, defaultLabel } = getLineLabelContent(
+										d,
+										category,
+										j,
+										filteredData.length,
+										labels
+									);
+
+									// Don't render if no content
+									if (!labelContent) return null;
 
 									// Calculate stacked Y position (sum of all previous categories + current)
 									const ySum = dataRender.categories
@@ -753,24 +784,14 @@ const StackedArea = () => {
 											return Number(acc) + Number(d[curr]);
 										}, 0);
 
-									// Generate default label
-									const defaultLabel = getLabelFormat(d[category], category, labels, null);
-
-									// Determine label content
-									let labelContent = '';
-									if (customLabel) {
-										labelContent = customLabel;
-									} else if (
-										labels.showFirstLastPointsOnly &&
-										(j === 0 || j === filteredData.length - 1)
-									) {
-										labelContent = defaultLabel;
-									} else if (!labels.showFirstLastPointsOnly) {
-										labelContent = defaultLabel;
-									}
-
-									// Don't render if no content
-									if (!labelContent) return null;
+									const placement = getFirstLastLabelPlacement({
+										pointIndex: j,
+										pointCount: filteredData.length,
+										labels,
+										fallbackTextAnchor:
+											(labelProps as { textAnchor?: 'start' | 'middle' | 'end' }).textAnchor ??
+											labels.textAnchor,
+									});
 
 									return (
 										<DraggableLabel
@@ -779,8 +800,8 @@ const StackedArea = () => {
 											y={dependentScale(ySum)}
 											dataPoint={d}
 											category={category}
-											defaultDx={labels.labelPositionDX}
-											defaultDy={labels.labelPositionDY}
+											defaultDx={placement.defaultDx}
+											defaultDy={placement.defaultDy}
 											chartInnerWidth={innerWidth}
 											chartInnerHeight={innerHeight}
 											defaultLabel={defaultLabel}
@@ -789,6 +810,7 @@ const StackedArea = () => {
 												seriesColor: colorScale(category),
 											})}
 											{...labelProps}
+											textAnchor={placement.textAnchor}
 										>
 											{labelContent}
 										</DraggableLabel>
@@ -885,6 +907,7 @@ const StackedArea = () => {
 													fallback: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
+												data: tooltipData,
 											},
 											tooltip,
 											dataRender

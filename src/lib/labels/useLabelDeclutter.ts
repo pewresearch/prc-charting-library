@@ -37,6 +37,8 @@ export function useLabelDeclutter(
 		options.iterations,
 		options.innerWidth,
 		options.innerHeight,
+		options.omitWithin,
+		options.omitEdgeWithin,
 	]);
 }
 

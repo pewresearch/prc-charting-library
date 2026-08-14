@@ -4,4 +4,4 @@
 
 **Layer + dependency rule:** Nested under `labels/`. May import `@prc/charting-utilities` (including `labelLayout/`), `primitives/`. Must **not** import `overlays/`, `charts/`, or `controller/`.
 
-**Admission test:** Is it part of the leader-line rendering/context layer (not pure compute)? If yes, here — not in `engine/`.
+**Admission test:** Is it part of the leader-line rendering/context layer (not pure compute)? If yes, here — pure compute belongs in `@prc/charting-utilities/labelLayout/`.
