@@ -13,6 +13,86 @@ const PERCENT_TOOLTIP = {
 	minDisplayValue: 0.1,
 };
 
+describe('getTooltipFormat decimal places (PRC-819)', () => {
+	it('keeps trailing zeros when decimal places are set', () => {
+		const result = getTooltipFormat(
+			{ x: 2040, y: 20, category: 'Series', color: '#000' },
+			{
+				...PERCENT_TOOLTIP,
+				minDisplayValue: null,
+				toFixedDecimal: 1,
+				toLocaleString: false,
+				template: '{{value}}',
+			},
+			undefined
+		);
+		expect(result).toBe('20.0');
+	});
+
+	it('keeps trailing zeros with locale formatting', () => {
+		const result = getTooltipFormat(
+			{ x: 2040, y: 20, category: 'Series', color: '#000' },
+			{
+				...PERCENT_TOOLTIP,
+				minDisplayValue: null,
+				toFixedDecimal: 2,
+				toLocaleString: true,
+				template: '{{value}}',
+			},
+			undefined
+		);
+		expect(result).toBe('20.00');
+	});
+
+	it('still rounds to the configured place before padding zeros', () => {
+		const result = getTooltipFormat(
+			{ x: 2040, y: 20.04, category: 'Series', color: '#000' },
+			{
+				...PERCENT_TOOLTIP,
+				minDisplayValue: null,
+				toFixedDecimal: 1,
+				toLocaleString: false,
+				template: '{{value}}',
+			},
+			undefined
+		);
+		expect(result).toBe('20.0');
+	});
+
+	it('renders exactly the configured number of decimal places', () => {
+		const result = getTooltipFormat(
+			{ x: 2040, y: 20, category: 'Series', color: '#000' },
+			{
+				...PERCENT_TOOLTIP,
+				minDisplayValue: null,
+				toFixedDecimal: 3,
+				toLocaleString: false,
+				template: '{{value}}',
+			},
+			undefined
+		);
+		expect(result).toBe('20.000');
+	});
+
+	// Charts published before Decimal Places became authoritative carry
+	// truncateDecimal: true and must render exactly as they do today.
+	it('leaves a legacy truncating chart unchanged', () => {
+		const result = getTooltipFormat(
+			{ x: 2040, y: 20, category: 'Series', color: '#000' },
+			{
+				...PERCENT_TOOLTIP,
+				minDisplayValue: null,
+				toFixedDecimal: 1,
+				toLocaleString: false,
+				truncateDecimal: true,
+				template: '{{value}}',
+			},
+			undefined
+		);
+		expect(result).toBe('20');
+	});
+});
+
 describe('getTooltipFormat with a display floor', () => {
 	it('substitutes the floor into the format template', () => {
 		const result = getTooltipFormat(

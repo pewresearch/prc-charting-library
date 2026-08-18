@@ -1279,20 +1279,6 @@ const SmallMultiples = () => {
 																			getY(row)
 																		)
 																	)}
-																{labelsActive &&
-																	!wpEditorFunctions?.labels &&
-																	series.rows.map((row, pointIndex) =>
-																		renderLineLabel(
-																			AnimatedLabel,
-																			series,
-																			seriesIndex,
-																			row,
-																			pointIndex,
-																			getX(row),
-																			getY(row),
-																			`line-label-${panel.key}`
-																		)
-																	)}
 															</Group>
 														);
 													})}
@@ -1835,20 +1821,22 @@ const SmallMultiples = () => {
 													})()}
 											</g>
 										</Group>
-										{/* Editor labels outside the hover-capturing plot group (Line pattern). */}
-										{isLinePanel && labelsActive && wpEditorFunctions?.labels && (
+										{/* Outside the plot clip so first/last "outside" labels are not cut. */}
+										{isLinePanel && labelsActive && (
 											<Group top={titlePad} left={axisPlan.leftInset}>
 												{panel.series.map((series, seriesIndex) =>
 													series.rows.map((row, pointIndex) =>
 														renderLineLabel(
-															DraggableLabel,
+															wpEditorFunctions?.labels ? DraggableLabel : AnimatedLabel,
 															series,
 															seriesIndex,
 															row,
 															pointIndex,
 															getX(row),
 															getY(row),
-															`drag-label-${panel.key}`
+															wpEditorFunctions?.labels
+																? `drag-label-${panel.key}`
+																: `line-label-${panel.key}`
 														)
 													)
 												)}
