@@ -1,5 +1,5 @@
 
-> @prc/charting-library@3.14.1 build
+> @prc/charting-library@3.14.0 build
 > tsc && wp-scripts build
 
 editor:
@@ -43,7 +43,7 @@ editor:
         editor.asset.php
   [39m[22m
 
-  [1meditor[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 12131 ms
+  [1meditor[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 64149 ms
 
 view:
   assets by info 3.6 MiB [1m[32m[immutable][39m[22m
@@ -90,4 +90,4 @@ view:
         view.asset.php
   [39m[22m
 
-  [1mview[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 14316 ms
+  [1mview[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 74109 ms
