@@ -33,6 +33,20 @@ describe('facetDataByColumn', () => {
 		expect(facetDataByColumn(undefined)).toEqual([]);
 	});
 
+	it('drops empty cells from a series the same way line charts do', () => {
+		const data = [
+			{ x: '2009', Chrome: 1, IE: 60 },
+			{ x: '2010', Chrome: '', IE: 50 },
+			{ x: '2011', Chrome: 12, IE: null },
+			{ x: '2012', Chrome: 20, IE: 30 },
+		];
+		const panels = facetDataByColumn(data);
+
+		expect(panels.find((p) => p.key === 'Chrome').rows.map((row) => row.x)).toEqual(['2009', '2011', '2012']);
+		expect(panels.find((p) => p.key === 'IE').rows.map((row) => row.x)).toEqual(['2009', '2010', '2012']);
+		expect(panels.find((p) => p.key === 'Chrome').rows.map((row) => row.y)).toEqual([1, 12, 20]);
+	});
+
 	it('skips reserved meta keys when deriving categories', () => {
 		const data = [
 			{

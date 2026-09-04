@@ -67,6 +67,10 @@ type LabelDatum = {
 	[key: string]: any;
 };
 
+function legendItemDisplayText(customEntry: LegendItemCustomization | undefined, label: LabelDatum): string {
+	return decodeHtmlEntities(customEntry?.text || label.text || '');
+}
+
 const OUTLINE_STROKE_WIDTH = 2;
 
 // Renders an inline SVG swatch (rect/circle/line) sized to the given
@@ -251,14 +255,14 @@ function DetachedLegendItem({
 			return;
 		}
 		if (onLegendItemClick) {
-			onLegendItemClick(itemKey, label.text, e.currentTarget);
+			onLegendItemClick(itemKey, displayText, e.currentTarget);
 		}
 	};
 
 	const handleKeyDown = onLegendItemClick
 		? (e: React.KeyboardEvent<HTMLDivElement>) => {
 				if (e.key === 'Enter' || e.key === ' ') {
-					onLegendItemClick(itemKey, label.text, e.currentTarget);
+					onLegendItemClick(itemKey, displayText, e.currentTarget);
 				}
 			}
 		: undefined;
@@ -425,7 +429,7 @@ export function ClickableLegend({
 				{visibleLabels.map((label: LabelDatum, i: number) => {
 					const itemKey = label.datum !== undefined ? String(label.datum) : String(i);
 					const customEntry = customLabels[itemKey];
-					const displayText = customEntry?.text ? decodeHtmlEntities(customEntry.text) : label.text;
+					const displayText = legendItemDisplayText(customEntry, label);
 
 					return (
 						<DetachedLegendItem
@@ -463,11 +467,11 @@ export function ClickableLegend({
 				const itemKey = label.datum !== undefined ? String(label.datum) : String(i);
 
 				const customEntry = customLabels[itemKey];
-				const displayText = customEntry?.text ? decodeHtmlEntities(customEntry.text) : label.text;
+				const displayText = legendItemDisplayText(customEntry, label);
 
 				const handleClick = onLegendItemClick
 					? (e: React.MouseEvent<HTMLDivElement>) => {
-							onLegendItemClick(itemKey, label.text, e.currentTarget);
+							onLegendItemClick(itemKey, displayText, e.currentTarget);
 						}
 					: undefined;
 

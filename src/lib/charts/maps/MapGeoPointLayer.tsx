@@ -42,6 +42,13 @@ export interface MapGeoPointLayerProps {
 	 * Used by orthographic country/region locator globes.
 	 */
 	fixedRadius?: number;
+	/**
+	 * When false, bind `cx`/`cy` directly (no position spring). Locator
+	 * markers must not glide: a country change would otherwise mount the
+	 * new centroid on the old camera and slide it home as the globe turns.
+	 * Bubble maps keep the default so year-scrub radius/position still tweens.
+	 */
+	animatePosition?: boolean;
 }
 
 const MapGeoPointLayer = ({
@@ -59,6 +66,7 @@ const MapGeoPointLayer = ({
 	hideTooltip,
 	tooltipTimeoutRef,
 	fixedRadius,
+	animatePosition = true,
 }: MapGeoPointLayerProps) => {
 	const { opacity = 0.7, stroke = '#ffffff', strokeWidth = 1 } = bubbleConfig;
 
@@ -135,25 +143,33 @@ const MapGeoPointLayer = ({
 					tooltipTimeoutRef.current = window.setTimeout(() => hideTooltip(), 300);
 				};
 
+				const markerProps = {
+					cx: coords[0],
+					cy: coords[1],
+					r,
+					fill,
+					fillOpacity: opacity,
+					stroke,
+					strokeWidth,
+					role: 'img' as const,
+					'aria-label': fixedRadius != null ? name : `${name}: ${val}`,
+					tabIndex: 0,
+					style: { cursor: 'pointer' as const },
+					onMouseMove: handleMouseMove,
+					onMouseLeave: handleMouseLeave,
+				};
+
+				if (!animatePosition) {
+					return <circle key={`geo-point-${key}`} {...markerProps} />;
+				}
+
 				return (
 					<AnimatedCircle
 						// Keyed by place, not by position in the value-sorted list:
 						// a year change can reorder that list, and an index-based key
 						// would remount the bubbles and lose the tween.
 						key={`geo-point-${key}`}
-						cx={coords[0]}
-						cy={coords[1]}
-						r={r}
-						fill={fill}
-						fillOpacity={opacity}
-						stroke={stroke}
-						strokeWidth={strokeWidth}
-						role="img"
-						aria-label={fixedRadius != null ? name : `${name}: ${val}`}
-						tabIndex={0}
-						style={{ cursor: 'pointer' }}
-						onMouseMove={handleMouseMove}
-						onMouseLeave={handleMouseLeave}
+						{...markerProps}
 					/>
 				);
 			})}

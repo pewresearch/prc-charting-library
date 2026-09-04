@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 /* eslint-disable max-lines-per-function */
+/* eslint-disable no-nested-ternary */
 // React Dependencies
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, RefObject } from 'react';
 // External Dependencies
@@ -14,7 +15,14 @@ import { voronoi } from '@visx/voronoi';
 import { extent, max, min } from 'd3-array';
 import * as Curve from '@visx/curve';
 // Internal Dependencies
-import type { BaseConfig, DeclutterLabelInput, FlatData, Size, TableData } from '@prc/charting-utilities';
+import type {
+	BaseConfig,
+	DeclutterLabelInput,
+	FlatData,
+	Size,
+	SmallMultiplesGroupPanel,
+	TableData,
+} from '@prc/charting-utilities';
 import {
 	DataContext,
 	DEFAULT_FONT_FAMILY,
@@ -24,6 +32,8 @@ import {
 	getChartDimensions,
 	getAxisProps,
 	getBarLabelFill,
+	getCustomLabel,
+	getCustomLabelText,
 	getCustomTooltip,
 	getGridProps,
 	getLabelFill,
@@ -44,6 +54,25 @@ import {
 	getLineLabelContent,
 	shouldShowLinePoint,
 	linearBarBaseline,
+	facetDataByColumn,
+	facetDataByGroup,
+	computeSharedDomain,
+	computePanelRects,
+	resolveEffectiveColumns,
+	planPanelAxes,
+	computeColumnBarRects,
+	resolveBandDomain,
+	computeHorizontalBarRects,
+	computeBarPanelHeight,
+	resolveSliceDomain,
+	resolveShapePaint,
+	generateSegmentKey,
+	resolveSegmentPaint,
+	resolveGhostStroke,
+	computeWaffleCells,
+	computeWaffleLayout,
+	resolveWaffleMax,
+	resolveWaffleCellSize,
 } from '@prc/charting-utilities';
 import {
 	AnnotationsLayer,
@@ -69,28 +98,6 @@ import {
 	type AnimationFamily,
 } from '../../animation';
 import { DraggableLabel, getDeclutterOffset, LeaderLineProvider, LeaderLineUnderlay } from '../../labels';
-import {
-	facetDataByColumn,
-	facetDataByGroup,
-	computeSharedDomain,
-	computePanelRects,
-	resolveEffectiveColumns,
-	planPanelAxes,
-	computeColumnBarRects,
-	resolveBandDomain,
-	computeHorizontalBarRects,
-	computeBarPanelHeight,
-	resolveSliceDomain,
-	resolveShapePaint,
-	generateSegmentKey,
-	resolveSegmentPaint,
-	resolveGhostStroke,
-	computeWaffleCells,
-	computeWaffleLayout,
-	resolveWaffleMax,
-	resolveWaffleCellSize,
-} from '@prc/charting-utilities';
-import type { SmallMultiplesGroupPanel } from '@prc/charting-utilities';
 import { PanelTitleLabel } from './PanelTitleLabel';
 import WaffleMarks from '../waffle/WaffleMarks';
 
@@ -580,7 +587,9 @@ const SmallMultiples = () => {
 
 								const seriesCount = panel.series.length || 1;
 								// Pie panels use the first series' rows as slices (x=category, y=value).
-								const pieRows = panel.series[0]?.rows ?? [];
+								const pieRows = (panel.series[0]?.rows ?? []).filter(
+									(row) => typeof row.y === 'number' && Number.isFinite(row.y)
+								);
 								const pieCategory = dataRender?.categories?.[0] || panel.series[0]?.key || panel.key;
 
 								const bandXScale = scaleBand<string>({
@@ -818,7 +827,10 @@ const SmallMultiples = () => {
 									anchorY: number,
 									keyPrefix: string
 								) => {
-									if (!labels || !isLabelVisible(row, series.key)) {
+									if (!labels) {
+										return null;
+									}
+									if (!isLabelVisible(row, series.key) && !wpEditorFunctions?.labels) {
 										return null;
 									}
 									const { content: labelContent, defaultLabel } = getLineLabelContent(
@@ -1328,7 +1340,8 @@ const SmallMultiples = () => {
 																index: seriesIndex,
 															};
 															const customLabel =
-																dataPoint.__labels?.[series.key] ||
+																getCustomLabelText(dataPoint, series.key) ||
+																getCustomLabel(dataPoint, series.key) ||
 																getLabelFormat(b.value, series.key, labels, null);
 															return (
 																<g key={`col-${panel.key}-${series.key}-${b.key}`}>
@@ -1467,7 +1480,8 @@ const SmallMultiples = () => {
 																index: seriesIndex,
 															};
 															const customLabel =
-																dataPoint.__labels?.[series.key] ||
+																getCustomLabelText(dataPoint, series.key) ||
+																getCustomLabel(dataPoint, series.key) ||
 																getLabelFormat(b.value, series.key, labels, null);
 															return (
 																<g key={`hbar-${panel.key}-${series.key}-${b.key}`}>
@@ -1608,7 +1622,8 @@ const SmallMultiples = () => {
 																			null
 																		);
 																		const customLabel =
-																			arc.data.__labels?.[pieCategory] ||
+																			getCustomLabelText(arc.data, pieCategory) ||
+																			getCustomLabel(arc.data, pieCategory) ||
 																			defaultLabel;
 																		return (
 																			<g
@@ -1711,14 +1726,14 @@ const SmallMultiples = () => {
 													(() => {
 														const panelValue = Number(panel.series[0]?.rows[0]?.y) || 0;
 														const legacySize = waffleConfig?.gridSize;
-														const columns = waffleConfig?.columns ?? legacySize ?? 10;
+														const waffleColumns = waffleConfig?.columns ?? legacySize ?? 10;
 														const rows = waffleConfig?.rows ?? legacySize ?? 10;
 														const cellGap = waffleConfig?.cellGap ?? 0.1;
 														const labelReserve = 24;
 														const cellSize = resolveWaffleCellSize({
 															mode: waffleConfig?.cellSizeMode ?? 'clamp',
 															cellSize: waffleConfig?.cellSize ?? 14,
-															columns,
+															columns: waffleColumns,
 															rows,
 															cellGap,
 															availableWidth: plotWidth,
@@ -1730,7 +1745,7 @@ const SmallMultiples = () => {
 															waffleConfig?.max ?? null
 														);
 														const waffleLayout = computeWaffleLayout({
-															columns,
+															columns: waffleColumns,
 															rows,
 															cellSize,
 															cellGap,
@@ -1743,7 +1758,7 @@ const SmallMultiples = () => {
 																	value: panelValue,
 																},
 															],
-															columns,
+															columns: waffleColumns,
 															rows,
 															max: waffleMax,
 														}).cells;

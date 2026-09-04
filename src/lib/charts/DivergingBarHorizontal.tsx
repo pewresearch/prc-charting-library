@@ -52,7 +52,6 @@ import { BarStackHorizontal, Line as VerticalLine } from '@visx/shape';
 import { useTooltip } from '@visx/tooltip';
 import { ascending, descending } from 'd3-array';
 
-/** Mirror labelPositionDX for negative bars so opposing labels stay symmetrical. */
 function withDivergingBarLabelDx(
 	position: { x: number; y: number },
 	value: number,
@@ -64,6 +63,25 @@ function withDivergingBarLabelDx(
 		y: position.y,
 		dx,
 	};
+}
+
+function divergingRowTooltipGroups(
+	divergingBar: BaseConfig['divergingBar'],
+	secondaryActive: boolean,
+	tooltipSide: 'left' | 'right' | undefined,
+	unified: boolean
+): string[][] {
+	const secondary = divergingBar?.secondary;
+	const extraPositive = secondaryActive && secondary ? secondary.positiveCategories : [];
+	const extraNegative = secondaryActive && secondary ? secondary.negativeCategories : [];
+	const positive = [...(divergingBar?.positiveCategories ?? []), ...extraPositive];
+	const negative = [...(divergingBar?.negativeCategories ?? []), ...extraNegative];
+
+	if (unified) {
+		return [negative, positive].filter((group) => group.length > 0);
+	}
+
+	return [tooltipSide === 'left' ? negative : positive];
 }
 
 const DivergingBarHorizontal = () => {
@@ -94,16 +112,12 @@ const DivergingBarHorizontal = () => {
 		drawings,
 	} = config as BaseConfig;
 
-	// LAYOUT
 	const { width, height, parentClass, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
 	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
 	const { chartWidth, innerWidth, innerHeight, overflow } = getChartDimensions(size, layout, diffColumn);
 	const labelCutoff = resolveLabelCutoff(labels, size.width, width);
 	const isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
-	// DATA PROCESSING
-	// this data is a little different than the others. Because the data stack's offset is divergent,
-	// we need to convert the keys that belong to the negative categories to negative values
 	const flattenedData = useMemo(() => {
 		const baseData = getFlattenedData(data);
 		const processedData = baseData.map((row: any) => {
@@ -117,7 +131,6 @@ const DivergingBarHorizontal = () => {
 			}, {} as any);
 		}) as FlatData[];
 
-		// Apply sorting after negative value conversion
 		processedData.sort((a: FlatData, b: FlatData) => {
 			if (dataRender.sortOrder === 'ascending') {
 				return ascending(a[dataRender.sortKey], b[dataRender.sortKey]);
@@ -128,12 +141,6 @@ const DivergingBarHorizontal = () => {
 			return 0;
 		});
 
-		// this feels counterintuitive,
-		// but we need to reverse the data because
-		// d3 stacks the data from the bottom up.
-		// UNLESS the sortKey is a negative category,
-		// then we can just leave it as is.
-		// Sorry.
 		if (!divergingBar.negativeCategories.includes(dataRender.sortKey)) {
 			processedData.reverse();
 		}
@@ -141,12 +148,8 @@ const DivergingBarHorizontal = () => {
 		return processedData;
 	}, [data, divergingBar.negativeCategories, dataRender.sortOrder, dataRender.sortKey]);
 
-	// DATA ACCESSORS
 	const getIndependentValue = useCallback((d: FlatData) => d[dataRender.x], [dataRender.x]);
 
-	// GROUP BREAKS PROCESSING
-	// Note: We pass a modified dataRender with sortOrder 'none' because we've already
-	// applied the diverging-specific sorting above in the flattenedData memo
 	const groupedData: GroupedData[] = useMemo(
 		() =>
 			getGroupedData(flattenedData, {
@@ -156,7 +159,6 @@ const DivergingBarHorizontal = () => {
 		[flattenedData, dataRender]
 	);
 
-	// SCALES
 	const independentScale = useMemo(() => {
 		const allValues = groupedData.flatMap(({ data }) => data.map(getIndependentValue));
 		return scaleBand<string>({
@@ -166,7 +168,6 @@ const DivergingBarHorizontal = () => {
 		});
 	}, [groupedData, getIndependentValue, innerHeight, barConfig.barGroupPadding]);
 
-	// GROUP POSITIONING - Calculate actualContentHeight
 	const { groupPositioning, actualContentHeight } = useMemo(
 		() => getGroupPositioningHorizontal(groupedData, dataRender, independentScale, innerHeight),
 		[groupedData, dataRender, independentScale, innerHeight]
@@ -209,7 +210,7 @@ const DivergingBarHorizontal = () => {
 			domain.push(divergingBar.neutralBar.category);
 		}
 
-		if (divergingBar.secondary?.active && divergingBar.secondary?.showInLegend) {
+		if (divergingBar.secondary?.active && (divergingBar.secondary?.showInLegend || tooltip.mode === 'unified')) {
 			const secondaryCats = [
 				...divergingBar.secondary.negativeCategories,
 				...divergingBar.secondary.positiveCategories,
@@ -224,9 +225,8 @@ const DivergingBarHorizontal = () => {
 		}
 
 		return scaleOrdinal<string, string>({ domain, range });
-	}, [divergingBar, colors]);
+	}, [divergingBar, colors, tooltip.mode]);
 
-	// tweak the ranges of scales if the neutral bar is active
 	if (divergingBar.neutralBar.active) {
 		dependentScale.rangeRound([0, innerWidth * divergingBar.percentOfInnerWidth]);
 	} else {
@@ -234,8 +234,6 @@ const DivergingBarHorizontal = () => {
 	}
 	independentScale.rangeRound([innerHeight, 0]);
 
-	// GET SHARED LAYOUT PROPS
-	// For shared props, we use the first group's data (or flattened if no grouping)
 	const sharedPropsData = groupedData.length > 0 ? groupedData[0].data : [];
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
 	const independentTicksComponent = (props: any) => (
@@ -281,7 +279,6 @@ const DivergingBarHorizontal = () => {
 		]
 	);
 
-	// TOOLTIP AND HANDLERS
 	const {
 		tooltipData,
 		tooltipLeft = 0,
@@ -291,7 +288,6 @@ const DivergingBarHorizontal = () => {
 		hideTooltip,
 	} = useTooltip<FlatData>();
 
-	// Whether the secondary ghost overlay is enabled
 	const secondaryActive = !!divergingBar.secondary?.active;
 
 	let tooltipTimeout: number;
@@ -315,11 +311,9 @@ const DivergingBarHorizontal = () => {
 						<GridColumns {...dependentGridProps} />
 						{independentAxis.active && (
 							<>
-								{/* Render custom axis for grouped data */}
 								{groupPositioning.map((groupPos, groupIndex) => {
 									const { data, startY, height } = groupPos;
 
-									// Create individual scale for this group's axis
 									const groupScale = createGroupBandScale(
 										data.map(getIndependentValue),
 										[startY + height, startY],
@@ -341,13 +335,9 @@ const DivergingBarHorizontal = () => {
 						{dependentAxis.active && (
 							<AxisBottom {...dependentAxisProps} top={innerHeight} scale={dependentScale} />
 						)}
-						{/* Render grouped diverging bar charts with breaks */}
 						{groupPositioning.map((groupPos, groupIndex) => {
 							const { group, data, startY, height, breakHeight } = groupPos;
 
-							// Create scales for this group:
-							// - groupScale: for positioning bars relative to the group's startY
-							// - gridScale: for grid lines within the group (range starts at 0)
 							const groupScale = createGroupBandScale(
 								data.map(getIndependentValue),
 								[startY + height, startY],
@@ -377,7 +367,6 @@ const DivergingBarHorizontal = () => {
 
 							return (
 								<Group key={`group-${groupIndex}-${group}`}>
-									{/* Render grid rows for this group - wrapped in Group for positioning */}
 									<Group top={startY}>
 										<GridRows
 											scale={gridScale}
@@ -390,10 +379,6 @@ const DivergingBarHorizontal = () => {
 										/>
 									</Group>
 
-									{/* Row-hit overlay: one invisible full-width rect per row.
-							    Rendered before primary bars (lower z-order) so primary bars
-							    keep their per-bar interactivity when directly hovered.
-							    Only active when secondary/ghost mode is enabled. */}
 									{secondaryActive &&
 										data.map((row: FlatData, rowIdx: number) => {
 											const rowY = groupScale(getIndependentValue(row));
@@ -460,7 +445,6 @@ const DivergingBarHorizontal = () => {
 													const { body: customTooltip, header: customHeader } =
 														getCustomTooltip(barData, category);
 
-													// Get custom shape styles (group-aware key)
 													const groupValue = getGroupValue(barData, dataRender);
 													const shapeKey = generateElementKey(
 														barData.x,
@@ -478,7 +462,6 @@ const DivergingBarHorizontal = () => {
 														dataRender,
 													});
 
-													// Apply custom styles with fallbacks
 													const shapeFill = customShapeStyles.fill || defaultColor;
 													const shapeStroke =
 														customShapeStyles.stroke ||
@@ -663,11 +646,6 @@ const DivergingBarHorizontal = () => {
 										}}
 									</BarStackHorizontal>
 
-									{/* Ghost overlay: secondary BarStackHorizontal rendered on top of
-							    primary with reduced opacity so primary colors tint through
-							    where stacks overlap. pointerEvents: none on the wrapping Group
-							    lets hit-testing fall through to the primary bars and row-hit
-							    rects below. No labels on the ghost layer. */}
 									{secondaryActive && (
 										<Group style={{ pointerEvents: 'none' }}>
 											<BarStackHorizontal
@@ -738,7 +716,6 @@ const DivergingBarHorizontal = () => {
 										</Group>
 									)}
 
-									{/* Net value labels (positive / right) */}
 									{netValues.active && netValues.positive.category && (
 										<Group top={startY}>
 											<NetValueLabels
@@ -780,7 +757,6 @@ const DivergingBarHorizontal = () => {
 										</Group>
 									)}
 
-									{/* Render diff column for this group */}
 									{diffColumn.active && diffColumn.category && (
 										<Group top={startY}>
 											<DiffColumn
@@ -798,7 +774,6 @@ const DivergingBarHorizontal = () => {
 										</Group>
 									)}
 
-									{/* Render visual break line on top - after DiffColumn to appear above background */}
 									{groupIndex > 0 && (
 										<BreakLine
 											x1={-padding.left}
@@ -837,11 +812,9 @@ const DivergingBarHorizontal = () => {
 							{dependentAxis.active && (
 								<AxisBottom top={innerHeight} {...dependentAxisProps} scale={dependentScale} />
 							)}
-							{/* Render grouped neutral bars with breaks */}
 							{groupPositioning.map((groupPos, groupIndex) => {
 								const { group, data, startY, height } = groupPos;
 
-								// Create scale for this group's neutral bars
 								const groupScale = createGroupBandScale(
 									data.map(getIndependentValue),
 									[startY + height, startY],
@@ -871,7 +844,6 @@ const DivergingBarHorizontal = () => {
 													const { body: customTooltip, header: customHeader } =
 														getCustomTooltip(barData, category);
 
-													// Get custom shape styles (group-aware key)
 													const groupValue2 = getGroupValue(barData, dataRender);
 													const shapeKey = generateElementKey(
 														barData.x,
@@ -889,7 +861,6 @@ const DivergingBarHorizontal = () => {
 														dataRender,
 													});
 
-													// Apply custom styles with fallbacks
 													const shapeFill = customShapeStyles.fill || defaultColor;
 													const shapeStroke =
 														customShapeStyles.stroke ||
@@ -984,10 +955,6 @@ const DivergingBarHorizontal = () => {
 																		y: 0,
 																	};
 
-																	// The neutral bar is a single segment, not a
-																	// diverging pair, so it shows a single-point
-																	// tooltip: `{{value}}` / `{{column}}` resolve to
-																	// the neutral bar instead of the row's sides.
 																	showTooltip({
 																		tooltipData: {
 																			...barData,
@@ -1146,43 +1113,55 @@ const DivergingBarHorizontal = () => {
 							)}
 						</>
 						{tooltipData.tooltipMode === 'row' ? (
-							// Row-context tooltip: each category formatted via getTooltipFormat
-							// so number formatting, abbreviation, custom format strings, and
-							// per-bar custom tooltips are all preserved.
 							<div>
-								{[
-									...(tooltipData.tooltipSide === 'left'
-										? divergingBar.negativeCategories
-										: divergingBar.positiveCategories),
-									...(secondaryActive
-										? tooltipData.tooltipSide === 'left'
-											? divergingBar.secondary!.negativeCategories
-											: divergingBar.secondary!.positiveCategories
-										: []),
-								].map((cat: string) => {
-									const raw = tooltipData[cat];
-									if (raw === null || raw === undefined) return null;
-									const val = typeof raw === 'number' ? Math.abs(raw) : raw;
-									const { body: customBody } = getCustomTooltip(tooltipData, cat);
-									const html = customBody
-										? customBody
-										: getTooltipFormat(
-												{
-													x: tooltipData.x,
-													y: val,
-													category: cat,
-													color: resolveCategoryColor({
-														category: cat,
-														fallback: colorScale(cat),
-														dataRender,
-													}),
-													data: tooltipData,
-												},
-												tooltip,
-												dataRender
-											);
-									return <div key={cat} dangerouslySetInnerHTML={{ __html: html }} />;
-								})}
+								{divergingRowTooltipGroups(
+									divergingBar,
+									secondaryActive,
+									tooltipData.tooltipSide,
+									tooltip.mode === 'unified'
+								).map((group, groupIndex) => (
+									<div key={`tooltip-group-${groupIndex}`}>
+										{groupIndex > 0 && (
+											<div
+												style={{
+													borderTop: '1px solid light-dark(#dadbdb, #3a3a3a)',
+													margin: '8px 0',
+												}}
+											/>
+										)}
+										{group.map((cat: string) => {
+											const raw = tooltipData[cat];
+											if (raw === null || raw === undefined) return null;
+											const val = typeof raw === 'number' ? Math.abs(raw) : raw;
+											const { body: customBody } = getCustomTooltip(tooltipData, cat);
+											const secondaryFill =
+												secondaryActive &&
+												(divergingBar.secondary!.positiveCategories.includes(cat) ||
+													divergingBar.secondary!.negativeCategories.includes(cat))
+													? (divergingBar.secondary!.categoryStyles?.[cat]?.fill ??
+														divergingBar.secondary!.fill)
+													: undefined;
+											const html = customBody
+												? customBody
+												: getTooltipFormat(
+														{
+															x: tooltipData.x,
+															y: val,
+															category: cat,
+															color: resolveCategoryColor({
+																category: cat,
+																fallback: secondaryFill ?? colorScale(cat),
+																dataRender,
+															}),
+															data: tooltipData,
+														},
+														tooltip,
+														dataRender
+													);
+											return <div key={cat} dangerouslySetInnerHTML={{ __html: html }} />;
+										})}
+									</div>
+								))}
 							</div>
 						) : (
 							<div

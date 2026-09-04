@@ -3,7 +3,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 
 // Internal dependencies
 import ChartBuilder from './ChartBuilder';
-import { DataProvider } from '@prc/charting-utilities';
+import { DataProvider, selectPlotRows } from '@prc/charting-utilities';
 import useChartStore, { ChartStoreSlice } from '../store/useChartStore';
 // Types
 import { BaseConfig } from '@prc/charting-utilities';
@@ -109,7 +109,7 @@ const ChartBuilderWrapper = ({
 		// @ts-ignore
 		<DataProvider
 			value={{
-				data: resolvedData,
+				data: selectPlotRows(resolvedData, resolvedConfig.dataRender),
 				config: resolvedConfig,
 				tableData: resolvedTableData,
 				wpEditorFunctions,

@@ -60,4 +60,18 @@ describe('computeSharedDomain', () => {
 		];
 		expect(computeSharedDomain(messy)).toEqual([12, 12]);
 	});
+
+	it('does not treat a missing y as 0', () => {
+		const withBlanks = [
+			{
+				key: 'A',
+				rows: [
+					{ x: '1', y: 12 },
+					{ x: '2', y: null },
+					{ x: '3', y: '' },
+				],
+			},
+		];
+		expect(computeSharedDomain(withBlanks)).toEqual([12, 12]);
+	});
 });

@@ -6,6 +6,7 @@ import {
 	DiffColumn as DiffColumnType,
 	DataRender,
 	generateElementKey,
+	getRowDisplayText,
 	Labels,
 	Layout,
 } from '@prc/charting-utilities';
@@ -138,7 +139,7 @@ export const DiffColumn = ({
 				const cellFontSize = resolveCellFontSize(customEntry?.fontSize, style.fontSize);
 				const cellTextOutline =
 					customEntry?.textOutline !== undefined ? customEntry.textOutline : style.textOutline;
-				const cellLabel = customEntry?.text ?? d[category];
+				const cellLabel = customEntry?.text ?? getRowDisplayText(d, category);
 				const y =
 					layout.type === 'dot-plot'
 						? scale(d[dataRender.x])
@@ -156,7 +157,7 @@ export const DiffColumn = ({
 										onCellClick(
 											d,
 											category,
-											String(d[category] ?? ''),
+											String(getRowDisplayText(d, category) ?? ''),
 											e.currentTarget,
 											groupValue
 										);

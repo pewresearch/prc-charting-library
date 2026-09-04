@@ -1,5 +1,11 @@
-import { enrichFacetRow, isFacetMetaKey } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/enrichFacetRow';
-import { facetDataByColumn, deriveCategories } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByColumn';
+import {
+	enrichFacetRow,
+	isFacetMetaKey,
+} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/enrichFacetRow';
+import {
+	facetDataByColumn,
+	deriveCategories,
+} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByColumn';
 import { facetDataByGroup } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByGroup';
 
 describe('enrichFacetRow', () => {
@@ -30,6 +36,12 @@ describe('enrichFacetRow', () => {
 	it('identifies underscore-prefixed meta keys', () => {
 		expect(isFacetMetaKey('__tooltips')).toBe(true);
 		expect(isFacetMetaKey('Chrome')).toBe(false);
+	});
+
+	it('leaves empty cells missing instead of coercing them to 0', () => {
+		expect(enrichFacetRow({ x: '2009', Chrome: '' }, 'Chrome').y).toBeUndefined();
+		expect(enrichFacetRow({ x: '2009', Chrome: null }, 'Chrome').y).toBeUndefined();
+		expect(enrichFacetRow({ x: '2009', Chrome: 12 }, 'Chrome').y).toBe(12);
 	});
 });
 

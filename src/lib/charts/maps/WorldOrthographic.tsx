@@ -1,4 +1,3 @@
-// External Imports
 import {
 	createElement,
 	Fragment,
@@ -18,7 +17,6 @@ import {
 import * as topojson from 'topojson-client';
 import DOMPurify from 'dompurify';
 
-// Visx Imports
 import { CustomProjection, Graticule } from '@visx/geo';
 import { geoOrthographic, geoDistance } from '@visx/vendor/d3-geo';
 import { scaleLinear, scaleOrdinal, scaleSqrt, scaleThreshold } from '@visx/scale';
@@ -27,10 +25,8 @@ import { useTooltip } from '@visx/tooltip';
 import { EventType } from '@visx/event/lib/types';
 import { Group } from '@visx/group';
 
-// STYLED COMPONENTS
 import styled from '@emotion/styled';
 
-// Local Imports
 import { DataContext } from '@prc/charting-utilities';
 import { BaseConfig } from '@prc/charting-utilities';
 import {
@@ -53,13 +49,11 @@ import {
 } from '@prc/charting-utilities';
 import { StyledTooltip, StyledLegend, AnnotationsLayer, DrawingsLayer, ClickableLegend } from '../../overlays';
 import { DraggableLabel } from '../../labels';
-import MapGeoPointLayer from './MapGeoPointLayer';
-// Types
+import MapGeoPointLayer, { type MapGeoPointLayerProps } from './MapGeoPointLayer';
 import type { Size } from '@prc/charting-utilities';
 import type { FlatData } from '@prc/charting-utilities';
 import type { FeatureShape } from '@prc/charting-utilities';
 import type { TableData } from '@prc/charting-utilities';
-// Internal
 import { getDisplayCentroid } from './getDisplayCentroid';
 import { TransitionProvider, useChartTransition, useLabelOpacity, useTransitionTiming } from '../../animation';
 import { animated, useSpring } from '@react-spring/web';
@@ -76,13 +70,8 @@ const TOPOLOGY_LOADERS = {
 
 const projection = geoOrthographic;
 
-// Degrees of globe rotation applied per pixel of pointer drag.
 const DRAG_SENSITIVITY = 0.25;
 
-/**
- * Shortest signed delta from one longitude/rotation angle to another.
- * Keeps country→country turns from spinning the long way around the globe.
- */
 function shortestAngleDelta(from: number, to: number): number {
 	let delta = to - from;
 	while (delta > 180) {
@@ -94,12 +83,6 @@ function shortestAngleDelta(from: number, to: number): number {
 	return delta;
 }
 
-/**
- * Annotations that follow the TransitionProvider clock: freeze the previous
- * label during `exiting` so the old country name fades out, stay hidden while
- * the globe turns, then fade in the new name. Without this the overlay text
- * swaps mid-spin.
- */
 function TransitioningAnnotationsLayer({
 	annotations,
 	...layerProps
@@ -112,8 +95,6 @@ function TransitioningAnnotationsLayer({
 }) {
 	const { phase, immediate, timing } = useChartTransition();
 	const opacity = useLabelOpacity({ phase, timing, immediate });
-	// Freeze the last settled annotations during exit. Only refresh the
-	// snapshot once we've left `exiting` — never while holding the old name.
 	const snapshotRef = useRef(annotations);
 	if (phase !== 'exiting' && phase !== 'animating') {
 		snapshotRef.current = annotations;
@@ -137,6 +118,28 @@ function TransitioningAnnotationsLayer({
 	return <animated.g style={{ opacity }}>{layer}</animated.g>;
 }
 
+function TransitioningGeoPointsLayer(props: MapGeoPointLayerProps) {
+	const { phase, immediate, timing } = useChartTransition();
+	const opacity = useLabelOpacity({ phase, timing, immediate });
+	const snapshotRef = useRef(props.data);
+	if (phase !== 'exiting' && phase !== 'animating') {
+		snapshotRef.current = props.data;
+	}
+
+	if (!immediate && phase === 'animating') {
+		return null;
+	}
+
+	const rendered = phase === 'exiting' ? snapshotRef.current : props.data;
+	const layer = <MapGeoPointLayer {...props} data={rendered} animatePosition={false} />;
+
+	if (immediate) {
+		return layer;
+	}
+
+	return <animated.g style={{ opacity }}>{layer}</animated.g>;
+}
+
 function getPrefersReducedMotion(): boolean {
 	if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
 		return false;
@@ -148,7 +151,6 @@ function getPrefersReducedMotion(): boolean {
 	}
 }
 
-/** Track OS reduced-motion preference; updates if the user changes the setting. */
 function usePrefersReducedMotion(): boolean {
 	const [prefersReducedMotion, setPrefersReducedMotion] = useState(getPrefersReducedMotion);
 
@@ -170,7 +172,6 @@ function usePrefersReducedMotion(): boolean {
 // in the editor — both flow through DOMPurify before being converted to React.
 const ALLOWED_TOOLTIP_TAGS = new Set(['span', 'strong', 'b', 'em', 'i', 'u', 'small', 'sup', 'sub', 'br', 'p', 'div']);
 
-/** Convert an inline `style` attribute string into a React style object. */
 function styleStringToObject(style: string): CSSProperties {
 	const obj: Record<string, string> = {};
 	style.split(';').forEach((decl) => {
@@ -185,7 +186,6 @@ function styleStringToObject(style: string): CSSProperties {
 	return obj as CSSProperties;
 }
 
-/** Recursively convert a sanitized DOM node into React nodes. */
 function domNodeToReact(node: ChildNode, key: string): ReactNode {
 	if (node.nodeType === Node.TEXT_NODE) {
 		return node.textContent;
@@ -196,7 +196,6 @@ function domNodeToReact(node: ChildNode, key: string): ReactNode {
 	const el = node as HTMLElement;
 	const tag = el.tagName.toLowerCase();
 	const children = Array.from(el.childNodes).map((child, i) => domNodeToReact(child, `${key}-${i}`));
-	// Unknown/disallowed wrapper: keep its (already-sanitized) children, drop the tag.
 	if (!ALLOWED_TOOLTIP_TAGS.has(tag)) {
 		return <Fragment key={key}>{children}</Fragment>;
 	}
@@ -227,7 +226,6 @@ function SafeHtml({ html }: { html: string }) {
 	return <>{nodes}</>;
 }
 
-// remove focus outline from map features when focused
 const MapFeature = styled.path`
 	-webkit-tap-highlight-color: transparent;
 	-webkit-touch-callout: none;
@@ -281,8 +279,6 @@ const WorldOrthographic = () => {
 
 	const { layout, colors, dataRender, labels, legend, tooltip, map, shapes, annotations, drawings } = config;
 
-	// Suspense-compatible resource loading. Locator topology is coarser and
-	// broader; default stays on the full 50m world file.
 	const topologyKey = map.globe?.topology === 'locator' ? 'locator' : 'full';
 	const topology = TOPOLOGY_LOADERS[topologyKey]();
 
@@ -295,7 +291,6 @@ const WorldOrthographic = () => {
 		[topology]
 	);
 
-	// SIZE AND LAYOUT
 	const { parentClass, padding, width, height } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
 	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
@@ -312,14 +307,12 @@ const WorldOrthographic = () => {
 
 	const mapCategory = dataRender.categories[0];
 
-	// Merge FlatData rows onto country features via the shared hook.
 	const { mergedData, mergedAndFilteredData } = useWorldCountryData({
 		features: world,
 		flattenedData,
 		category: mapCategory,
 	});
 
-	// Explicit lat/lon point overlay (dataRender.mapStyle === 'geo-points').
 	const isGeoPointsMode = dataRender.mapStyle === 'geo-points';
 	const geoPoints = map.geoPoints;
 	const sizeCategory = geoPoints?.sizeCategory || mapCategory;
@@ -349,13 +342,8 @@ const WorldOrthographic = () => {
 		[bubbleScaleMaxValue, map.bubble?.minRadius, map.bubble?.maxRadius]
 	);
 
-	// Every row gets a point, including ones whose country the topology did
-	// draw. On a small globe a highlighted polygon is not a reliable signal —
-	// Singapore is a couple of pixels and some island nations have no polygon
-	// at all — so the marker, not the fill, is what the reader actually locates.
 	const geoPointRows = isGeoPointsMode ? flattenedData : [];
 
-	// COLOR SCALES
 	const thresholdScale = scaleThreshold<number, string>({
 		domain: dataRender.mapScaleDomain as number[],
 		range: colors,
@@ -384,9 +372,6 @@ const WorldOrthographic = () => {
 		return thresholdScale(featureData?.[category]);
 	};
 
-	// ORTHOGRAPHIC PROJECTION GEOMETRY
-	// Globe behaviour config (drag/auto-spin). Guard each field so blocks saved
-	// before the `globe` config existed still render with sensible defaults.
 	const dragToRotate = map.globe?.dragToRotate ?? true;
 	const autoSpin = map.globe?.autoSpin ?? false;
 	const spinSpeed = map.globe?.spinSpeed ?? 0.2;
@@ -398,16 +383,11 @@ const WorldOrthographic = () => {
 	const prefersReducedMotion = usePrefersReducedMotion();
 	const spinFromConfig = autoSpin && !prefersReducedMotion;
 
-	// Initial rotation seeded from the map projection config. Center longitude /
-	// latitude rotate the globe to face a region; rotate* fine-tunes the view.
 	const seededRotation = useMemo<[number, number, number]>(
 		() => [map.rotateLambda - map.centerLongitude, map.rotatePhi - map.centerLatitude, map.rotateGamma],
 		[map.rotateLambda, map.centerLongitude, map.rotatePhi, map.centerLatitude, map.rotateGamma]
 	);
 
-	// Live rotation state — drag and auto-spin mutate this; the config seed sets
-	// the starting view and (when animation.update is on) springs to a new seed
-	// instead of cutting — e.g. Religious Projections country→country locator.
 	const [rotation, setRotation] = useState<[number, number, number]>(seededRotation);
 	const [isSpinning, setIsSpinning] = useState(spinFromConfig);
 	const seedRef = useRef(seededRotation);
@@ -418,8 +398,6 @@ const WorldOrthographic = () => {
 	// the camera back to an intermediate country (react-spring v9 fires onRest
 	// for interrupted runs; `finished` alone is not always enough).
 	const rotationEpochRef = useRef(0);
-	// Circle-family schedule: geometryDelay waits out the label fade-out so the
-	// name disappears before the globe turns, then fades back in after onRest.
 	const { update: rotationTiming } = useTransitionTiming('circle');
 	const [, rotationSpringApi] = useSpring(() => ({
 		l: seededRotation[0],
@@ -438,8 +416,6 @@ const WorldOrthographic = () => {
 		seedRef.current = seededRotation;
 		const epoch = ++rotationEpochRef.current;
 
-		// Drag owns the camera; reduced-motion / disabled animation / editor
-		// force a snap. Otherwise spring along the shortest longitude arc.
 		if (draggingRef.current || rotationTiming.immediate) {
 			rotationSpringApi.stop();
 			rotationSpringApi.set({
@@ -455,9 +431,6 @@ const WorldOrthographic = () => {
 		const targetLambda = current[0] + shortestAngleDelta(current[0], seededRotation[0]);
 		const settleTo = seededRotation;
 		setIsSpinning(false);
-		// Hold the current view through geometryDelay (label fade-out). A bare
-		// `from` + `delay` would flash the target early — same pitfall as
-		// usePointGlide's path spring.
 		rotationSpringApi.set({
 			l: current[0],
 			p: current[1],
@@ -478,12 +451,9 @@ const WorldOrthographic = () => {
 				setRotation([value.l, value.p, value.g]);
 			},
 			onRest: (result) => {
-				// Interrupted/retargeted springs must not settle — that snaps
-				// the camera to an intermediate country mid-turn.
 				if (!result?.finished || epoch !== rotationEpochRef.current) {
 					return;
 				}
-				// Settle on the canonical seed angles (not the unwrapped lambda).
 				setRotation(settleTo);
 				rotationSpringApi.set({
 					l: settleTo[0],
@@ -501,12 +471,10 @@ const WorldOrthographic = () => {
 		rotationSpringApi,
 	]);
 
-	// Re-seed runtime spin when auto-spin or reduced-motion preference changes.
 	useEffect(() => {
 		setIsSpinning(spinFromConfig);
 	}, [spinFromConfig]);
 
-	// Auto-spin: advance longitude each animation frame, paused while dragging.
 	useEffect(() => {
 		if (!isSpinning) return undefined;
 		let frame = 0;
@@ -520,7 +488,6 @@ const WorldOrthographic = () => {
 		return () => cancelAnimationFrame(frame);
 	}, [isSpinning, spinSpeed]);
 
-	// Drag-to-rotate: pointer deltas map to longitude/latitude rotation.
 	const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
 
@@ -531,9 +498,6 @@ const WorldOrthographic = () => {
 			wpEditorFunctions?.globe?.onDragStart?.();
 			setIsSpinning(false);
 			draggingRef.current = true;
-			// A seed-change spring would fight the pointer; hand the camera to drag.
-			// Invalidate in-flight onRest so an interrupted turn cannot settle
-			// after the user has taken over.
 			rotationEpochRef.current += 1;
 			rotationSpringApi.stop();
 			setIsDragging(true);
@@ -585,8 +549,6 @@ const WorldOrthographic = () => {
 		}
 	}, []);
 
-	// Visible-hemisphere center in lon/lat is the inverse of the rotation, used
-	// to hide labels that fall on the far side of the globe.
 	const viewCenter: [number, number] = [-rotation[0], -rotation[1]];
 
 	const radius = (Math.min(innerWidth, innerHeight) / 2) * map.customScale;
@@ -601,7 +563,6 @@ const WorldOrthographic = () => {
 		clipAngle: 90,
 	};
 
-	// Same projection maths as the polygon layers, for the point overlay.
 	const geoPointProjection = useMemo(
 		() => geoOrthographic().scale(radius).translate([centerX, centerY]).rotate(rotation).clipAngle(90),
 		[radius, centerX, centerY, rotation]
@@ -609,9 +570,7 @@ const WorldOrthographic = () => {
 
 	// Unlike path clipping, projecting a raw point returns coordinates even
 	// for the far side of the globe, so back-facing markers are dropped with
-	// the same hemisphere test the label layer uses. A plain closure, not a
-	// memoized callback: it derives from per-render rotation state and its
-	// only consumer re-renders alongside it anyway.
+	// the same hemisphere test the label layer uses.
 	const projectGeoPoint = (coords: [number, number]): [number, number] | null => {
 		if (geoDistance(coords, viewCenter) > Math.PI / 2) {
 			return null;
@@ -619,7 +578,6 @@ const WorldOrthographic = () => {
 		return geoPointProjection(coords) ?? null;
 	};
 
-	// GET SHARED LAYOUT PROPS
 	const { ariaProps, legendProps, tooltipVisible, annotationsVisible, labelProps } = useMemo(
 		() =>
 			getSharedProps({
@@ -632,7 +590,6 @@ const WorldOrthographic = () => {
 		[config, flattenedData, size, tableData]
 	);
 
-	// TOOLTIP
 	const {
 		tooltipData,
 		tooltipLeft = 0,
@@ -643,8 +600,6 @@ const WorldOrthographic = () => {
 	} = useTooltip<FlatData>();
 	const tooltipTimeoutRef = useRef<number>(0);
 
-	// Drive label choreography off the locator view (facing + name), not the
-	// row array alone — country navigations always change both together.
 	const viewTransitionKey = `${map.centerLongitude},${map.centerLatitude}:${annotations?.items?.[0]?.text ?? ''}`;
 
 	return (
@@ -671,7 +626,6 @@ const WorldOrthographic = () => {
 					}}
 				>
 					<Group role="presentation" top={padding.top} left={padding.left}>
-						{/* Ocean disc + lat/long grid — rendered beneath country polygons. */}
 						<CustomProjection<FeatureShape> {...projectionProps} data={[]}>
 							{({ path }) => (
 								<>
@@ -693,7 +647,6 @@ const WorldOrthographic = () => {
 								</>
 							)}
 						</CustomProjection>
-						{/* Background layer: all countries, no data binding, no tooltips. */}
 						<CustomProjection<FeatureShape> {...projectionProps} data={mergedData}>
 							{({ features }) =>
 								features.map(({ feature, path }, i) => (
@@ -708,7 +661,6 @@ const WorldOrthographic = () => {
 								))
 							}
 						</CustomProjection>
-						{/* Data layer: countries with values only — choropleth, tooltips, labels. */}
 						<CustomProjection<FeatureShape> {...projectionProps} data={mergedAndFilteredData}>
 							{({ features }) => {
 								const featureMeta = features.map(({ feature, path, projection: proj }, i) => {
@@ -718,7 +670,6 @@ const WorldOrthographic = () => {
 									const shapeKey = generateElementKey(shapeIdentifier, mapCategory, null);
 									const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
 									const shapeFill = customShapeStyles.fill || fill;
-									// Only the visible hemisphere should carry labels.
 									const centroid = getDisplayCentroid(feature);
 									const isFrontFacing = geoDistance(centroid, viewCenter) <= Math.PI / 2;
 									const coords: [number, number] | null = proj(centroid);
@@ -736,14 +687,12 @@ const WorldOrthographic = () => {
 									};
 								});
 
-								// ── Polygon layer ──────────────────────────────────
 								const polygonLayer = featureMeta.map((meta) => {
 									if (!meta) return null;
 									const { feature, path, id, properties, fill, shapeFill, customShapeStyles, i } =
 										meta;
 
 									const onPolyMouseMove = (event: EventType) => {
-										// Suppress hover tooltips while the user is dragging the globe.
 										if (draggingRef.current) return;
 										if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
 										if (!svgRef.current) return;
@@ -815,7 +764,6 @@ const WorldOrthographic = () => {
 									);
 								});
 
-								// ── Label layer ────────────────────────────────────
 								const labelLayer = labels.active
 									? featureMeta.map((meta) => {
 											if (!meta) return null;
@@ -871,7 +819,7 @@ const WorldOrthographic = () => {
 							}}
 						</CustomProjection>
 						{isGeoPointsMode && geoPointRows.length > 0 && (
-							<MapGeoPointLayer
+							<TransitioningGeoPointsLayer
 								data={geoPointRows}
 								project={projectGeoPoint}
 								sizeCategory={sizeCategory}
@@ -1032,12 +980,14 @@ const WorldOrthographic = () => {
 								html={
 									tooltipData.customTooltip
 										? (tooltipData.customTooltip as string)
-										: (getTooltipFormat({
+										: (getTooltipFormat(
+												{
 													x: tooltipData.x,
 													y: tooltipData.y,
 													category: tooltipData.category,
 													color: tooltipData.fill,
-										data: tooltipData,},
+													data: tooltipData,
+												},
 												tooltip,
 												dataRender
 											) as string)

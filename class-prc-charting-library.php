@@ -1,5 +1,6 @@
 <?php
 /**
+ * PRC Charting Library plugin bootstrap.
  *
  * @package           PRC_Charting_Library
  * @author            Pew Research Center
@@ -21,7 +22,15 @@
  * License URI:       https://opensource.org/licenses/MIT
  */
 
+/**
+ * Registers the charting library editor script and frontend script module.
+ */
 class PRC_Charting_Library {
+	/**
+	 * Hook script registration when constructed as the plugin bootstrap.
+	 *
+	 * @param bool $init Whether to register enqueue and init hooks.
+	 */
 	public function __construct( $init = false ) {
 		if ( true === $init ) {
 			add_action( 'wp_enqueue_scripts', array( $this, 'init_charting_library_script' ), 0 );
@@ -40,7 +49,7 @@ class PRC_Charting_Library {
 	 *
 	 * Fires early on wp_enqueue_scripts and admin_enqueue_scripts.
 	 *
-	 * @return void
+	 * @return void|WP_Error
 	 */
 	public function init_charting_library_script() {
 		$asset_file = include plugin_dir_path( __FILE__ ) . 'build/editor.asset.php';

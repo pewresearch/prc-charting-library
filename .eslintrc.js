@@ -9,6 +9,7 @@ module.exports = {
 		'import/no-extraneous-dependencies': 'off',
 		'max-lines-per-function': 'off',
 		'max-lines': 'off',
+		'no-restricted-imports': 'off',
 		// Prettier's opinionated line-wrapping rules are too aggressive for
 		// complex TypeScript chart components — disable the ESLint integration
 		// so formatting violations don't surface as errors. Prettier can still

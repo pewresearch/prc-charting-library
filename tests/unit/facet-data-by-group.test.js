@@ -32,6 +32,17 @@ describe('facetDataByGroup', () => {
 		expect(panels[0].series.map((s) => s.key)).toEqual(['Reliable']);
 	});
 
+	it('drops empty cells from a group series the same way line charts do', () => {
+		const data = [
+			{ x: 2022, Reliable: 83, Country: 'Sweden' },
+			{ x: 2024, Reliable: '', Country: 'Sweden' },
+			{ x: 2026, Reliable: 16, Country: 'Sweden' },
+		];
+		const panels = facetDataByGroup(data, 'Country');
+		expect(panels[0].series[0].rows.map((row) => row.x)).toEqual([2022, 2026]);
+		expect(panels[0].series[0].rows.map((row) => row.y)).toEqual([83, 16]);
+	});
+
 	it('returns empty for empty or missing data', () => {
 		expect(facetDataByGroup([], 'Country')).toEqual([]);
 		expect(facetDataByGroup(null, 'Country')).toEqual([]);

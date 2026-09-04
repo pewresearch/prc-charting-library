@@ -56,7 +56,6 @@ export function ClickableTicks({
 	strokeWidth = 1,
 	tickLineProps,
 }: ClickableTicksProps) {
-	// eslint-disable-next-line no-console
 	return (
 		<>
 			{ticks.map((tick, index) => {
@@ -69,8 +68,6 @@ export function ClickableTicks({
 				const tickYCoord = to.y + (horizontal && orientation !== Orientation.top ? tickLabelFontSize : 0);
 
 				const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-					// eslint-disable-next-line no-console
-
 					if (onTickClick && e.currentTarget) {
 						onTickClick(axisKey, value, formattedValue, e.currentTarget);
 					}

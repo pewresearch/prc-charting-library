@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
+import type { MouseEvent } from 'react';
 import { DraggableCore } from 'react-draggable';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import {
@@ -175,6 +176,7 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 	// Track position during drag (grouped mode only; harmless in detached mode).
 	const [position, setPosition] = useState({ x: offsetX, y: offsetY });
 	const [isDragging, setIsDragging] = useState(false);
+	const didDragRef = useRef(false);
 	// react-draggable needs an explicit nodeRef under React 19 (findDOMNode was removed).
 	const dragRef = useRef<HTMLDivElement>(null);
 
@@ -182,6 +184,13 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 	useEffect(() => {
 		setPosition({ x: offsetX, y: offsetY });
 	}, [offsetX, offsetY]);
+
+	// Keep free-position layout until alignment persists as 'none' after drag.
+	useEffect(() => {
+		if (isDragging && alignment === 'none') {
+			setIsDragging(false);
+		}
+	}, [alignment, isDragging]);
 
 	// Detached variation: skip all chrome and whole-legend drag. Render as a transparent
 	// full-chart overlay so detached items have a predictable positioning context (the
@@ -210,9 +219,20 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 
 	// Determine if draggable
 	const isDraggable = !!wpEditorFunctions?.legend;
+	const activeAlignment = isDragging ? 'none' : alignment;
 
-	// Handle drag events
 	const handleDrag = (e: DraggableEvent, data: DraggableData) => {
+		if (!didDragRef.current) {
+			if (data.deltaX === 0 && data.deltaY === 0) {
+				return;
+			}
+			didDragRef.current = true;
+			setIsDragging(true);
+			if (wpEditorFunctions?.legend?.onDragActivate) {
+				wpEditorFunctions.legend.onDragActivate();
+			}
+		}
+
 		const newX = position.x + data.deltaX;
 		const newY = position.y + data.deltaY;
 
@@ -224,16 +244,38 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 	};
 
 	const handleDragStart = () => {
-		setIsDragging(true);
+		didDragRef.current = false;
 		if (wpEditorFunctions?.legend?.onDragStart) {
 			wpEditorFunctions.legend.onDragStart();
 		}
 	};
 
 	const handleDragStop = () => {
-		setIsDragging(false);
+		if (!didDragRef.current) {
+			if (wpEditorFunctions?.legend?.onDragCancel) {
+				wpEditorFunctions.legend.onDragCancel();
+			}
+			return;
+		}
 		if (wpEditorFunctions?.legend?.onDragEnd) {
 			wpEditorFunctions.legend.onDragEnd(position.x, position.y);
+		}
+		if (alignment === 'none') {
+			setIsDragging(false);
+		}
+	};
+
+	const handleChromeClick = (event: MouseEvent<HTMLDivElement>) => {
+		if (didDragRef.current) {
+			didDragRef.current = false;
+			return;
+		}
+		const target = event.target as HTMLElement | null;
+		if (target?.closest('.visx-legend-item')) {
+			return;
+		}
+		if (wpEditorFunctions?.legend?.onClick) {
+			wpEditorFunctions.legend.onClick(event.currentTarget);
 		}
 	};
 
@@ -248,9 +290,9 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 				position: 'absolute',
 				top: currentY / 2 - 10,
 				left: currentX * widthRatio,
-				width: alignment === 'none' ? 'auto' : '100%',
-				display: alignment === 'none' ? 'block' : 'flex',
-				justifyContent: alignment,
+				width: activeAlignment === 'none' ? 'auto' : '100%',
+				display: activeAlignment === 'none' ? 'block' : 'flex',
+				justifyContent: activeAlignment,
 				fontSize: `${fontSize}px`,
 				fontWeight: fontWeight || undefined,
 				fontFamily: legendFontFamily,
@@ -259,6 +301,7 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 		>
 			<div
 				className="cb__legend__inner"
+				onClick={isDraggable ? handleChromeClick : undefined}
 				style={{
 					display: 'flex',
 					flexDirection: 'column',

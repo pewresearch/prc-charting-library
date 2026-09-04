@@ -567,6 +567,13 @@ const Pie = () => {
 												{(pie) => {
 													return pie.arcs.map((arc, index) => {
 														const indepVal = getIndependentValue(arc.data);
+														const customLabelText = getCustomLabelText(
+															arc.data,
+															'__categoryLabel'
+														);
+														const customLabel =
+															customLabelText ||
+															getCustomLabel(arc.data, '__categoryLabel');
 														const [centroidX, centroidY] = pie.path.centroid(arc);
 														const hasSpaceForLabel = arc.endAngle - arc.startAngle >= 0.1;
 
@@ -594,7 +601,7 @@ const Pie = () => {
 																}
 																{...labelProps}
 															>
-																{indepVal}
+																{customLabel || indepVal}
 															</AnimatedLabel>
 														);
 													});
@@ -615,6 +622,9 @@ const Pie = () => {
 									{(pie) => {
 										return pie.arcs.map((arc, index) => {
 											const indepVal = getIndependentValue(arc.data);
+											const customLabelText = getCustomLabelText(arc.data, '__categoryLabel');
+											const customLabel =
+												customLabelText || getCustomLabel(arc.data, '__categoryLabel');
 											const [centroidX, centroidY] = pie.path.centroid(arc);
 											const hasSpaceForLabel = arc.endAngle - arc.startAngle >= 0.1;
 
@@ -642,7 +652,7 @@ const Pie = () => {
 													}
 													{...labelProps}
 												>
-													{indepVal}
+													{customLabel || indepVal}
 												</AnimatedLabel>
 											);
 										});
@@ -729,12 +739,14 @@ const Pie = () => {
 							dangerouslySetInnerHTML={{
 								__html:
 									getCustomTooltip(tooltipData, dataRender.categories[0]).body ||
-									getTooltipFormat({
+									getTooltipFormat(
+										{
 											x: getIndependentValue(tooltipData),
 											y: getDependentValue(tooltipData),
 											category: dataRender.categories[0],
 											color: tooltipData.color,
-										data: tooltipData,},
+											data: tooltipData,
+										},
 										tooltip,
 										dataRender
 									),

@@ -108,7 +108,7 @@ map: {
 },
 ```
 
-Implemented by `MapGeoPointLayer` on `World` and `WorldOrthographic` maps.
+Implemented by `MapGeoPointLayer` on `World` and `WorldOrthographic` maps. Pass `animatePosition={false}` on the layer when bubbles should snap to coordinates (the orthographic globe preset uses this).
 
 ## Shared Utilities
 
