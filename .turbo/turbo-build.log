@@ -1,5 +1,5 @@
 
-> @prc/charting-library@3.14.0 build
+> @prc/charting-library@3.14.1 build
 > tsc && wp-scripts build
 
 editor:
@@ -43,7 +43,7 @@ editor:
         editor.asset.php
   [39m[22m
 
-  [1meditor[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 55702 ms
+  [1meditor[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 15516 ms
 
 view:
   assets by info 3.6 MiB [1m[32m[immutable][39m[22m
@@ -60,7 +60,7 @@ view:
     asset [1m[33mview.js[39m[22m [1m[33m618 KiB[39m[22m [1m[32m[emitted][39m[22m [javascript module] [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: view)
     asset [1m[32mview.asset.php[39m[22m 130 bytes [1m[32m[emitted][39m[22m (name: view)
   Entrypoint [1mview[39m[22m [1m[33m[big][39m[22m 619 KiB = [1m[32mview.js[39m[22m 618 KiB [1m[32mview.asset.php[39m[22m 130 bytes
-  orphan modules 1.99 MiB [1m[33m[orphan][39m[22m 995 modules
+  orphan modules 1.99 MiB [1m[33m[orphan][39m[22m 996 modules
   runtime modules 6.4 KiB 11 modules
   built modules 5.47 MiB [1m[33m[built][39m[22m
     modules by path [1m../[39m[22m 1.02 MiB 167 modules
@@ -90,4 +90,4 @@ view:
         view.asset.php
   [39m[22m
 
-  [1mview[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 66530 ms
+  [1mview[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 17589 ms
