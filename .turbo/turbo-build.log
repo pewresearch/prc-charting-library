@@ -1,5 +1,5 @@
 
-> @prc/charting-library@3.14.1 build
+> @prc/charting-library@3.15.0 build
 > tsc && wp-scripts build
 
 editor:
@@ -12,38 +12,38 @@ editor:
       asset [1m[32m697.js?ver=499a07a00ccac30d51b8[39m[22m 38.5 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m (id hint: vendors)
       asset [1m[32m580.js?ver=19273be9159606c8c37d[39m[22m 34.7 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m (id hint: vendors)
     + 36 assets
-  assets by chunk 500 KiB (name: editor)
-    asset [1m[33meditor.js[39m[22m [1m[33m500 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: editor)
+  assets by chunk 504 KiB (name: editor)
+    asset [1m[33meditor.js[39m[22m [1m[33m504 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: editor)
     asset [1m[32meditor.asset.php[39m[22m 222 bytes [1m[32m[emitted][39m[22m (name: editor)
-  Entrypoint [1meditor[39m[22m [1m[33m[big][39m[22m 500 KiB = [1m[32meditor.js[39m[22m 500 KiB [1m[32meditor.asset.php[39m[22m 222 bytes
-  orphan modules 1.28 MiB [1m[33m[orphan][39m[22m 472 modules
+  Entrypoint [1meditor[39m[22m [1m[33m[big][39m[22m 504 KiB = [1m[32meditor.js[39m[22m 504 KiB [1m[32meditor.asset.php[39m[22m 222 bytes
+  orphan modules 1.29 MiB [1m[33m[orphan][39m[22m 472 modules
   runtime modules 9.33 KiB 12 modules
-  built modules 4.91 MiB [1m[33m[built][39m[22m
+  built modules 4.92 MiB [1m[33m[built][39m[22m
     modules by path [1m../../node_modules/[39m[22m 530 KiB 131 modules
-    modules by path [1m./[39m[22m 4.39 MiB
+    modules by path [1m./[39m[22m 4.4 MiB
       json modules 3.4 MiB 32 modules
-      javascript modules 1010 KiB
-        modules by path [1m./src/lib/[39m[22m 374 KiB 21 modules
-        modules by path [1m./src/*.js[39m[22m 634 KiB 2 modules
+      javascript modules 1020 KiB
+        modules by path [1m./src/lib/[39m[22m 377 KiB 21 modules
+        modules by path [1m./src/*.js[39m[22m 640 KiB 2 modules
         + 1 module
     + 9 modules
 
   [1m[33mWARNING[39m[22m in [1masset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
   This can impact web performance.
   Assets: 
-    editor.js (500 KiB)
+    editor.js (504 KiB)
     38.js?ver=c6e5b6b0a529b5ccb8ae (823 KiB)
     855.js?ver=7ab606d822a7e2e0186d (1.57 MiB)
     88.js?ver=97f8eeb2988c5211232d (416 KiB)[39m[22m
 
   [1m[33mWARNING[39m[22m in [1mentrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
   Entrypoints:
-    editor (500 KiB)
+    editor (504 KiB)
         editor.js
         editor.asset.php
   [39m[22m
 
-  [1meditor[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 18671 ms
+  [1meditor[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 18025 ms
 
 view:
   assets by info 3.6 MiB [1m[32m[immutable][39m[22m
@@ -56,38 +56,38 @@ view:
       asset [1m[32mview-123.js?ver=59da8bd2d6c1860527eb[39m[22m 38.5 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m (id hint: vendors)
       asset [1m[32mview-918.js?ver=b4b191782f4c5855e15b[39m[22m 25.7 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m (id hint: vendors)
     + 36 assets
-  assets by chunk 619 KiB (name: view)
-    asset [1m[33mview.js[39m[22m [1m[33m618 KiB[39m[22m [1m[32m[emitted][39m[22m [javascript module] [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: view)
+  assets by chunk 624 KiB (name: view)
+    asset [1m[33mview.js[39m[22m [1m[33m624 KiB[39m[22m [1m[32m[emitted][39m[22m [javascript module] [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: view)
     asset [1m[32mview.asset.php[39m[22m 130 bytes [1m[32m[emitted][39m[22m (name: view)
-  Entrypoint [1mview[39m[22m [1m[33m[big][39m[22m 619 KiB = [1m[32mview.js[39m[22m 618 KiB [1m[32mview.asset.php[39m[22m 130 bytes
-  orphan modules 1.99 MiB [1m[33m[orphan][39m[22m 996 modules
+  Entrypoint [1mview[39m[22m [1m[33m[big][39m[22m 624 KiB = [1m[32mview.js[39m[22m 624 KiB [1m[32mview.asset.php[39m[22m 130 bytes
+  orphan modules 2.01 MiB [1m[33m[orphan][39m[22m 998 modules
   runtime modules 6.4 KiB 11 modules
-  built modules 5.47 MiB [1m[33m[built][39m[22m
-    modules by path [1m../[39m[22m 1.02 MiB 167 modules
-    modules by path [1m./[39m[22m 4.45 MiB
+  built modules 5.49 MiB [1m[33m[built][39m[22m
+    modules by path [1m../[39m[22m 1.03 MiB 167 modules
+    modules by path [1m./[39m[22m 4.47 MiB
       json modules 3.4 MiB
         modules by path [1m./src/lib/data/maps/world/*.json[39m[22m 936 KiB 28 modules
         modules by path [1m./src/lib/data/maps/usa/*.json[39m[22m 116 KiB 2 modules
         [1m./src/lib/data/maps/usa-counties/topology.json[39m[22m 822 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
         [1m./src/lib/data/maps/usa-cbsa/topology.json[39m[22m 1.57 MiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-      javascript modules 1.05 MiB
-        modules by path [1m./src/lib/[39m[22m 383 KiB 21 modules
-        modules by path [1m./src/*.js[39m[22m 689 KiB 2 modules
+      javascript modules 1.06 MiB
+        modules by path [1m./src/lib/[39m[22m 387 KiB 21 modules
+        modules by path [1m./src/*.js[39m[22m 697 KiB 2 modules
         [1m./node_modules/topojson-client/src/feature.js + 3 modules[39m[22m 3.04 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
 
   [1m[33mWARNING[39m[22m in [1masset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
   This can impact web performance.
   Assets: 
-    view.js (618 KiB)
+    view.js (624 KiB)
     view-38.js?ver=27c6c3401bf0937522cd (823 KiB)
     view-855.js?ver=4ab1a59a0577b45672f3 (1.57 MiB)
     view-88.js?ver=24f79306c810295ba33b (416 KiB)[39m[22m
 
   [1m[33mWARNING[39m[22m in [1mentrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
   Entrypoints:
-    view (619 KiB)
+    view (624 KiB)
         view.js
         view.asset.php
   [39m[22m
 
-  [1mview[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 21825 ms
+  [1mview[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 20500 ms

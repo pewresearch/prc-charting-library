@@ -1,13 +1,19 @@
 // External dependencies
 import { ErrorBoundary } from 'react-error-boundary';
+import { useMemo } from 'react';
 
 // Internal dependencies
 import ChartBuilder from './ChartBuilder';
-import { DataProvider, selectPlotRows } from '@prc/charting-utilities';
-import useChartStore, { ChartStoreSlice } from '../store/useChartStore';
-// Types
-import { BaseConfig } from '@prc/charting-utilities';
-import { TableData } from '@prc/charting-utilities';
+import {
+	DataProvider,
+	selectPlotRows,
+	useSeriesMask,
+	type BaseConfig,
+	type ChartLayoutType,
+	type LegendItemsController,
+	type TableData,
+} from '@prc/charting-utilities';
+import useChartStore, { ChartStoreSlice, toggleHiddenSeries } from '../store/useChartStore';
 
 type WrapperProps = {
 	data?: any;
@@ -57,6 +63,7 @@ function recordRender(chartId?: string) {
 
 function ErrorFallback(props: any) {
 	const { error, fallbackImg } = props;
+	// eslint-disable-next-line no-console
 	console.log({ 'Error:': error.message });
 	return (
 		<>
@@ -97,6 +104,32 @@ const ChartBuilderWrapper = ({
 	const resolvedConfig = slice?.config !== undefined ? (slice.config as BaseConfig) : config;
 	const resolvedTableData = slice?.tableData !== undefined ? (slice.tableData as TableData) : tableData;
 
+	const seriesMask = useSeriesMask({
+		chartId,
+		chartType: (resolvedConfig?.layout?.type ?? 'bar') as ChartLayoutType,
+		clickToHide: resolvedConfig?.legend?.clickToHide,
+		clickToHideGroups: resolvedConfig?.legend?.clickToHideGroups,
+		isEditor: wpEditorFunctions !== undefined,
+		hiddenSeries: slice ? (slice.hiddenSeries ?? []) : undefined,
+		onToggle:
+			interactivityNamespace && chartId
+				? (key: string) => {
+						toggleHiddenSeries(interactivityNamespace, chartId, key);
+					}
+				: undefined,
+	});
+	const legendItems: LegendItemsController | undefined = useMemo(() => {
+		if (!seriesMask.armed) {
+			return undefined;
+		}
+		return {
+			onClick: (key: string) => {
+				seriesMask.toggle(key);
+			},
+			getItemOpacity: (key: string) => seriesMask.legendOpacity(key),
+		};
+	}, [seriesMask]);
+
 	// Config is required to render any chart — caller (view.js's renderChart
 	// or editor-mounted ChartBuilder) must always provide one via either prop
 	// or store seed. If neither is present, surface the fallback so we don't
@@ -114,6 +147,8 @@ const ChartBuilderWrapper = ({
 				tableData: resolvedTableData,
 				wpEditorFunctions,
 				animationPreview,
+				seriesMask,
+				legendItems,
 			}}
 		>
 			<ErrorBoundary FallbackComponent={(props) => <ErrorFallback {...props} fallbackImg={fallbackImg} />}>

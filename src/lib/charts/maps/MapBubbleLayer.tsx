@@ -114,7 +114,7 @@ const MapBubbleLayer = ({
 
 			// Coerce value — data can arrive as string or number
 			const rawVal = properties?.[category];
-			if (rawVal == null) return null;
+			if (rawVal === null || rawVal === undefined) return null;
 			const val = typeof rawVal === 'number' ? rawVal : parseFloat(rawVal);
 			if (isNaN(val)) return null;
 
@@ -196,7 +196,7 @@ const MapBubbleLayer = ({
 						role="img"
 						aria-label={`${name}: ${val}`}
 						tabIndex={0}
-						style={{ cursor: 'pointer' }}
+						style={{ cursor: 'default' }}
 						onMouseMove={handleMouseMove}
 						onMouseLeave={handleMouseLeave}
 						onFocus={handleFocus}

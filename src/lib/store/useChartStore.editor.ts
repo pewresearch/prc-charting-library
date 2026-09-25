@@ -20,9 +20,12 @@ export interface ChartStoreSlice {
 	shouldRender?: boolean;
 	chartHash?: string;
 	iframeHeight?: number | null;
+	hiddenSeries?: string[];
 }
 
-export function useChartStore<T = ChartStoreSlice>(_namespace?: string, _chartId?: string): T | undefined {
+export function toggleHiddenSeries(): void {}
+
+export function useChartStore<T = ChartStoreSlice>(): T | undefined {
 	return undefined;
 }
 

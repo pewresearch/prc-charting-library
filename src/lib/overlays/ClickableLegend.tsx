@@ -1,7 +1,12 @@
 /**
- * ClickableLegend - Replaces visx's internal item rendering with click-to-edit
- * support and custom label text. Pass as the `children` render prop of any
- * visx Legend component (LegendOrdinal, LegendThreshold, LegendLinear).
+ * ClickableLegend — visx legend item renderer with a generic click controller.
+ *
+ * Pass as the `children` render prop of any visx Legend component
+ * (LegendOrdinal, LegendThreshold, LegendLinear). Clicks call
+ * `onClick(itemKey, displayText, el)`. The overlay does not decide what
+ * a click means. Today the editor wires `wpEditorFunctions.legendItems.onClick`
+ * (customize). Published charts may wire `context.legendItems.onClick`
+ * (first frontend handler: session hide). Editor wins when both exist.
  *
  * Because visx skips its own flex container when `children` is provided,
  * this component renders the equivalent wrapper div itself.
@@ -19,8 +24,10 @@ import {
 	contrastLabelFillForLightDark,
 	DataContext,
 	decodeHtmlEntities,
+	categoryKeyFromLegendDatum,
 	type BaseConfig,
 	type LegendItemCustomization,
+	type LegendItemsController,
 	type TableData,
 } from '@prc/charting-utilities';
 import { LegendItem, LegendLabel } from '@visx/legend';
@@ -71,6 +78,45 @@ function legendItemDisplayText(customEntry: LegendItemCustomization | undefined,
 	return decodeHtmlEntities(customEntry?.text || label.text || '');
 }
 
+const INVISIBLE_LEGEND_CHARS = /[\u200B\u200C\u200D\u2060\uFEFF]/g;
+
+function legendItemHasAccessibleName(displayText: string): boolean {
+	return displayText.replace(INVISIBLE_LEGEND_CHARS, '').trim() !== '';
+}
+
+// Hidden scale placeholders (no marker, zero-width label) stay in the legend
+// domain but are not controls.
+function legendItemIsPlaceholder(displayText: string, hideMarker: boolean): boolean {
+	return hideMarker && !legendItemHasAccessibleName(displayText);
+}
+
+function isInvisibleLegendColor(color: string | undefined): boolean {
+	if (color === undefined) {
+		return true;
+	}
+	const normalized = color.trim().toLowerCase();
+	return normalized === '' || normalized === 'transparent' || normalized === 'none';
+}
+
+function legendSwatchSeriesColor(
+	scaleColor: string,
+	customEntry: LegendItemCustomization | undefined,
+	markerFill: 'solid' | 'outline'
+): string {
+	const customColor =
+		customEntry?.color && !isInvisibleLegendColor(customEntry.color) ? customEntry.color : undefined;
+
+	if (markerFill === 'outline') {
+		return customColor ?? (isInvisibleLegendColor(scaleColor) ? 'light-dark(#565656, #a0a0a0)' : scaleColor);
+	}
+
+	if (customColor && isInvisibleLegendColor(scaleColor)) {
+		return customColor;
+	}
+
+	return isInvisibleLegendColor(scaleColor) ? 'light-dark(#565656, #a0a0a0)' : scaleColor;
+}
+
 const OUTLINE_STROKE_WIDTH = 2;
 
 // Renders an inline SVG swatch (rect/circle/line) sized to the given
@@ -97,7 +143,8 @@ function LegendSwatch({
 		return <span style={{ display: 'inline-block', width, height, margin }} />;
 	}
 	const isOutline = markerFill === 'outline';
-	const fillColor = isOutline ? 'transparent' : seriesColor;
+	// SVG presentation attributes do not resolve `light-dark()`; inherit via CSS `color`.
+	const swatchColor = isInvisibleLegendColor(seriesColor) ? 'light-dark(#565656, #a0a0a0)' : seriesColor;
 
 	let element: React.ReactElement;
 	if (shape === 'circle') {
@@ -111,8 +158,8 @@ function LegendSwatch({
 				cx={cx}
 				cy={cy}
 				r={r}
-				fill={fillColor}
-				stroke={isOutline ? seriesColor : 'none'}
+				fill={isOutline ? 'none' : 'currentColor'}
+				stroke={isOutline ? 'currentColor' : 'none'}
 				strokeWidth={isOutline ? OUTLINE_STROKE_WIDTH : 0}
 			/>
 		);
@@ -123,7 +170,7 @@ function LegendSwatch({
 				x2={width}
 				y1={height / 2}
 				y2={height / 2}
-				stroke={seriesColor}
+				stroke="currentColor"
 				strokeWidth={OUTLINE_STROKE_WIDTH}
 				strokeLinecap="round"
 			/>
@@ -136,8 +183,8 @@ function LegendSwatch({
 				y={inset}
 				width={Math.max(0, width - inset * 2)}
 				height={Math.max(0, height - inset * 2)}
-				fill={fillColor}
-				stroke={isOutline ? seriesColor : 'none'}
+				fill={isOutline ? 'none' : 'currentColor'}
+				stroke={isOutline ? 'currentColor' : 'none'}
 				strokeWidth={isOutline ? OUTLINE_STROKE_WIDTH : 0}
 			/>
 		);
@@ -151,6 +198,7 @@ function LegendSwatch({
 				height,
 				margin,
 				flexShrink: 0,
+				color: swatchColor,
 			}}
 		>
 			<svg width={width} height={height} style={{ display: 'block' }}>
@@ -180,6 +228,55 @@ type ClickableLegendProps = {
 	direction?: string;
 };
 
+type LegendItemClickHandler = (key: string, text: string, el: EventTarget) => void;
+
+function legendItemKey(label: LabelDatum, index: number): string {
+	return label.datum !== undefined && label.datum !== null ? categoryKeyFromLegendDatum(label.datum) : String(index);
+}
+
+function legendItemActivationProps(input: {
+	onLegendItemClick?: LegendItemClickHandler;
+	itemKey: string;
+	displayText: string;
+	opacity: number;
+	hideMarker: boolean;
+}): {
+	role?: 'button';
+	tabIndex?: number;
+	'aria-pressed'?: boolean;
+	'aria-hidden'?: boolean;
+	onClick?: (e: React.MouseEvent<HTMLElement>) => void;
+	onKeyDown?: (e: React.KeyboardEvent<HTMLElement>) => void;
+	style: React.CSSProperties;
+} {
+	const placeholder = legendItemIsPlaceholder(input.displayText, input.hideMarker);
+	const clickable = Boolean(input.onLegendItemClick) && !placeholder;
+	return {
+		role: clickable ? 'button' : undefined,
+		tabIndex: clickable ? 0 : undefined,
+		'aria-pressed': clickable ? input.opacity < 1 : undefined,
+		'aria-hidden': placeholder ? true : undefined,
+		onClick: clickable
+			? (e) => {
+					input.onLegendItemClick?.(input.itemKey, input.displayText, e.currentTarget);
+				}
+			: undefined,
+		onKeyDown: clickable
+			? (e) => {
+					if (e.key === 'Enter' || e.key === ' ') {
+						e.preventDefault();
+						input.onLegendItemClick?.(input.itemKey, input.displayText, e.currentTarget);
+					}
+				}
+			: undefined,
+		style: {
+			opacity: input.opacity,
+			cursor: clickable ? 'pointer' : undefined,
+			pointerEvents: placeholder ? 'none' : undefined,
+		},
+	};
+}
+
 // Render a single absolute-positioned detached legend item, with optional
 // per-item drag wired to `wpEditorFunctions.legendItems.onItemDrag*`.
 function DetachedLegendItem({
@@ -201,6 +298,7 @@ function DetachedLegendItem({
 	legendLabelProps,
 	displayText,
 	onLegendItemClick,
+	itemOpacity,
 	legendItemHandlers,
 }: {
 	itemKey: string;
@@ -221,6 +319,7 @@ function DetachedLegendItem({
 	legendLabelProps: Record<string, any>;
 	displayText: string;
 	onLegendItemClick?: (key: string, text: string, el: EventTarget) => void;
+	itemOpacity: number;
 	legendItemHandlers?: {
 		onItemDragStart?: (key: string) => void;
 		onItemDrag?: (key: string, x: number, y: number) => void;
@@ -262,6 +361,7 @@ function DetachedLegendItem({
 	const handleKeyDown = onLegendItemClick
 		? (e: React.KeyboardEvent<HTMLDivElement>) => {
 				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
 					onLegendItemClick(itemKey, displayText, e.currentTarget);
 				}
 			}
@@ -292,14 +392,18 @@ function DetachedLegendItem({
 	// Per-item 'none' → always hide. A specific shape → always show (overrides legend-level 'none'/'label').
 	// No per-item override → inherit the legend-level hide flag (none or label mode).
 	const hideMarker = rawMarker === 'none' || (rawMarker === undefined && (legendHideAllMarkers || legendIsLabelMode));
+	const placeholder = legendItemIsPlaceholder(displayText, hideMarker);
+	const interactive = Boolean(onLegendItemClick) && !placeholder;
 	const itemShape = (rawMarker !== undefined && rawMarker !== 'none' ? rawMarker : defaultShape) as
 		| 'rect'
 		| 'circle'
 		| 'line';
 
-	let cursor: 'grabbing' | 'grab' | 'default' = 'default';
+	let cursor: 'grabbing' | 'grab' | 'pointer' | 'default' = 'default';
 	if (isDraggable) {
 		cursor = isDragging ? 'grabbing' : 'grab';
+	} else if (interactive) {
+		cursor = 'pointer';
 	}
 
 	// Mirror DraggableLabel's stroke+paintOrder: use -webkit-text-stroke for HTML equivalent.
@@ -324,17 +428,20 @@ function DetachedLegendItem({
 		maxWidth: customEntry?.maxWidth ? `${customEntry.maxWidth}px` : undefined,
 		WebkitTextStroke: outlineColor ? `1px ${outlineColor}` : undefined,
 		userSelect: 'none',
-		pointerEvents: 'auto',
+		pointerEvents: placeholder && !isDraggable ? 'none' : 'auto',
 		cursor,
+		opacity: itemOpacity,
 	};
 
 	const inner = (
 		<div
 			ref={dragRef}
-			role={onLegendItemClick ? 'button' : undefined}
-			tabIndex={onLegendItemClick ? 0 : undefined}
-			onClick={onLegendItemClick ? handleClick : undefined}
-			onKeyDown={handleKeyDown}
+			role={interactive ? 'button' : undefined}
+			tabIndex={interactive ? 0 : undefined}
+			aria-pressed={interactive ? itemOpacity < 1 : undefined}
+			aria-hidden={placeholder ? true : undefined}
+			onClick={interactive ? handleClick : undefined}
+			onKeyDown={interactive ? handleKeyDown : undefined}
 			style={itemStyle}
 		>
 			<LegendSwatch
@@ -342,7 +449,11 @@ function DetachedLegendItem({
 				width={hideMarker ? 0 : defaultShapeWidth}
 				height={hideMarker ? 0 : defaultShapeHeight}
 				margin={hideMarker ? '0' : defaultShapeMargin}
-				seriesColor={fill ? fill(label) : '#000'}
+				seriesColor={legendSwatchSeriesColor(
+					fill ? fill(label) : '#000',
+					customEntry,
+					customEntry?.markerFill ?? legendMarkerFill
+				)}
 				markerFill={customEntry?.markerFill ?? legendMarkerFill}
 			/>
 			<LegendLabel
@@ -391,11 +502,13 @@ export function ClickableLegend({
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			legendItems?: LegendItemsController;
 		}>
 	);
 
 	const wpEditorFunctions = context?.wpEditorFunctions;
-	const onLegendItemClick = wpEditorFunctions?.legendItems?.onClick;
+	const onLegendItemClick = wpEditorFunctions?.legendItems?.onClick ?? context?.legendItems?.onClick;
+	const getItemOpacity = context?.legendItems?.getItemOpacity ?? (() => 1);
 	const legendItemHandlers = wpEditorFunctions?.legendItems;
 	const customLabels: Record<string, LegendItemCustomization> = context?.config?.legend?.customLabels ?? {};
 	const variation = context?.config?.legend?.variation ?? 'grouped';
@@ -427,7 +540,7 @@ export function ClickableLegend({
 		return (
 			<>
 				{visibleLabels.map((label: LabelDatum, i: number) => {
-					const itemKey = label.datum !== undefined ? String(label.datum) : String(i);
+					const itemKey = legendItemKey(label, i);
 					const customEntry = customLabels[itemKey];
 					const displayText = legendItemDisplayText(customEntry, label);
 
@@ -452,6 +565,7 @@ export function ClickableLegend({
 							legendLabelProps={legendLabelProps}
 							displayText={displayText}
 							onLegendItemClick={onLegendItemClick}
+							itemOpacity={getItemOpacity(itemKey)}
 							legendItemHandlers={legendItemHandlers}
 						/>
 					);
@@ -464,16 +578,18 @@ export function ClickableLegend({
 	return (
 		<div style={{ display: 'flex', flexDirection: direction as any, flexWrap: 'wrap' }}>
 			{visibleLabels.map((label: LabelDatum, i: number) => {
-				const itemKey = label.datum !== undefined ? String(label.datum) : String(i);
+				const itemKey = legendItemKey(label, i);
 
 				const customEntry = customLabels[itemKey];
 				const displayText = legendItemDisplayText(customEntry, label);
-
-				const handleClick = onLegendItemClick
-					? (e: React.MouseEvent<HTMLDivElement>) => {
-							onLegendItemClick(itemKey, displayText, e.currentTarget);
-						}
-					: undefined;
+				const hideMarker = legendHideAllMarkers || legendIsLabelMode || customEntry?.markerStyle === 'none';
+				const activation = legendItemActivationProps({
+					onLegendItemClick,
+					itemKey,
+					displayText,
+					opacity: getItemOpacity(itemKey),
+					hideMarker,
+				});
 
 				const groupedOutlineColor = customEntry?.textOutline
 					? contrastLabelFillForLightDark(customEntry.color || '#000000')
@@ -496,37 +612,33 @@ export function ClickableLegend({
 							}
 						: undefined;
 
-				const hideMarker = legendHideAllMarkers || legendIsLabelMode || customEntry?.markerStyle === 'none';
 				const effectiveFill: 'solid' | 'outline' = customEntry?.markerFill ?? legendMarkerFill;
+				const scaleColor = fill ? fill(label) : '#000';
 
 				return (
-					<LegendItem
-						key={`legend-item-${itemKey}-${i}`}
-						margin={perItemMargin}
-						flexDirection={itemDirection as any}
-						alignItems="center"
-						onClick={handleClick}
-					>
-						<LegendSwatch
-							shape={safeDefaultShape}
-							width={hideMarker ? 0 : shapeWidth}
-							height={hideMarker ? 0 : shapeHeight}
-							margin={hideMarker ? '0' : shapeMargin}
-							seriesColor={fill ? fill(label) : '#000'}
-							markerFill={effectiveFill}
-						/>
-						<LegendLabel
-							label={displayText}
-							flex={labelFlex}
-							margin={labelMargin}
-							align={labelAlign}
-							{...legendLabelProps}
-							style={{
-								...legendLabelProps?.style,
-								...groupedItemStyle,
-							}}
-						/>
-					</LegendItem>
+					<div key={`legend-item-${itemKey}-${i}`} {...activation}>
+						<LegendItem margin={perItemMargin} flexDirection={itemDirection as any} alignItems="center">
+							<LegendSwatch
+								shape={safeDefaultShape}
+								width={hideMarker ? 0 : shapeWidth}
+								height={hideMarker ? 0 : shapeHeight}
+								margin={hideMarker ? '0' : shapeMargin}
+								seriesColor={legendSwatchSeriesColor(scaleColor, customEntry, effectiveFill)}
+								markerFill={effectiveFill}
+							/>
+							<LegendLabel
+								label={displayText}
+								flex={labelFlex}
+								margin={labelMargin}
+								align={labelAlign}
+								{...legendLabelProps}
+								style={{
+									...legendLabelProps?.style,
+									...groupedItemStyle,
+								}}
+							/>
+						</LegendItem>
+					</div>
 				);
 			})}
 		</div>

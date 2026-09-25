@@ -49,6 +49,29 @@ export interface ChartStoreSlice {
 	shouldRender?: boolean;
 	chartHash?: string;
 	iframeHeight?: number | null;
+	hiddenSeries?: string[];
+}
+
+/**
+ * Dispatch `actions.toggleHiddenSeries` on the named Interactivity store.
+ * ChartBuilderWrapper calls this instead of importing `store()` itself so
+ * the editor webpack alias can swap this module for a no-op stub.
+ *
+ * @param namespace Interactivity store namespace.
+ * @param chartId   Chart instance id.
+ * @param key       Series or group key to toggle.
+ */
+export function toggleHiddenSeries(namespace: string, chartId: string, key: string): void {
+	try {
+		const chartStore = store(namespace) as {
+			actions?: {
+				toggleHiddenSeries?: (id: string, key: string) => void;
+			};
+		};
+		chartStore.actions?.toggleHiddenSeries?.(chartId, key);
+	} catch {
+		// Store namespace not registered, or interactivity not loaded.
+	}
 }
 
 /**
@@ -139,6 +162,7 @@ export function useChartStore<T = ChartStoreSlice>(namespace?: string, chartId?:
 						void slice.shouldRender;
 						void slice.chartHash;
 						void slice.iframeHeight;
+						void slice.hiddenSeries;
 						// `config` is mutated by `setConfig` IN PLACE at nested
 						// paths (object-merge), so a top-level read alone would
 						// miss those. Walk the whole config subtree to subscribe

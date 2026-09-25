@@ -69,6 +69,7 @@ const MapGeoPointLayer = ({
 	animatePosition = true,
 }: MapGeoPointLayerProps) => {
 	const { opacity = 0.7, stroke = '#ffffff', strokeWidth = 1 } = bubbleConfig;
+	const isLocator = typeof fixedRadius === 'number';
 
 	// How many times each place label has been seen. A bubble's React key has to
 	// be the place itself so it survives a data change and tweens — but labels
@@ -92,8 +93,14 @@ const MapGeoPointLayer = ({
 			}
 
 			const rawVal = row[sizeCategory];
-			const val =
-				fixedRadius != null ? 1 : typeof rawVal === 'number' ? rawVal : parseFloat(String(rawVal ?? ''));
+			let val: number;
+			if (isLocator) {
+				val = 1;
+			} else if (typeof rawVal === 'number') {
+				val = rawVal;
+			} else {
+				val = parseFloat(String(rawVal ?? ''));
+			}
 			if (Number.isNaN(val)) {
 				return null;
 			}
@@ -117,7 +124,7 @@ const MapGeoPointLayer = ({
 					val: number;
 					name: string;
 				};
-				const r = fixedRadius != null ? fixedRadius : bubbleRadiusScale(Math.abs(val));
+				const r = isLocator ? fixedRadius : bubbleRadiusScale(Math.abs(val));
 
 				const handleMouseMove = (event: EventType) => {
 					if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
@@ -128,7 +135,7 @@ const MapGeoPointLayer = ({
 						tooltipData: {
 							x: name,
 							id,
-							y: fixedRadius != null ? undefined : val,
+							y: isLocator ? undefined : val,
 							category: sizeCategory,
 							fill,
 							customTooltip: _tip,
@@ -152,9 +159,9 @@ const MapGeoPointLayer = ({
 					stroke,
 					strokeWidth,
 					role: 'img' as const,
-					'aria-label': fixedRadius != null ? name : `${name}: ${val}`,
+					'aria-label': isLocator ? name : `${name}: ${val}`,
 					tabIndex: 0,
-					style: { cursor: 'pointer' as const },
+					style: { cursor: 'default' as const },
 					onMouseMove: handleMouseMove,
 					onMouseLeave: handleMouseLeave,
 				};

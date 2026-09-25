@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo, useRef, RefObject, useState, CSSProperties } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, RefObject, useState, CSSProperties } from 'react';
 
 import {
 	DataContext,
@@ -29,6 +29,9 @@ import {
 	getMinPositiveColumnValue,
 	createPointRadiusScale,
 	resolvePointRadius,
+	INERT_SERIES_MASK,
+	markHideKey,
+	seriesMaskShouldHideTooltip,
 } from '@prc/charting-utilities';
 import { useLineFamilyScales } from '../scales';
 import {
@@ -50,7 +53,7 @@ import {
 	LeaderLineUnderlay,
 	useLabelDeclutter,
 } from '../labels';
-import type { FlatData, Size, BaseConfig, TableData } from '@prc/charting-utilities';
+import type { FlatData, Size, BaseConfig, TableData, SeriesMaskView } from '@prc/charting-utilities';
 
 import { Circle } from '@visx/shape';
 import { Group } from '@visx/group';
@@ -70,13 +73,27 @@ const StyledAnimatedCircle = styled(AnimatedCircle)`
 	}
 `;
 
+function pointerEventsForMark(hidden: boolean, editorShapesActive: unknown): 'none' | 'all' | undefined {
+	if (hidden) {
+		return 'none';
+	}
+	return editorShapesActive ? 'all' : undefined;
+}
+
 const Scatter = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const {
+		data,
+		config,
+		tableData,
+		wpEditorFunctions,
+		seriesMask = INERT_SERIES_MASK,
+	} = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -96,6 +113,8 @@ const Scatter = () => {
 		annotations,
 		drawings,
 	} = config;
+
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
 
 	// SIZE AND LAYOUT
 	const { height, width, parentClass, padding } = layout;
@@ -151,12 +170,26 @@ const Scatter = () => {
 		[dataRender, flattenedData, sizeCategory]
 	);
 
+	const voronoiHitData = useMemo(() => {
+		if (!seriesMaskView.armed) {
+			return voronoiData;
+		}
+		return voronoiData.filter((d: FlatData & { category?: string }) => {
+			const hideKey = markHideKey({
+				category: String(d.category ?? ''),
+				row: d as Record<string, unknown>,
+				groupColumn: dataRender.groupBreaksCategory,
+			});
+			return !seriesMaskView.isHidden(hideKey);
+		});
+	}, [voronoiData, seriesMaskView, dataRender.groupBreaksCategory]);
+
 	// Combined (single) regression — used when perGroupBreak is false.
-	const { regressionData } = useRegressionLine(voronoiData, regressionConfig);
+	const { regressionData } = useRegressionLine(voronoiHitData, regressionConfig);
 	// Per-group regression — splits by colorGroup when groupBreaksCategory is set (long/tagged
 	// data format, e.g. a "Region" column), otherwise splits by category (wide format).
 	const regressionGroupByKey = dataRender.groupBreaksActive ? 'colorGroup' : 'category';
-	const { regressionDataByCategory } = useRegressionLines(voronoiData, regressionConfig, regressionGroupByKey);
+	const { regressionDataByCategory } = useRegressionLines(voronoiHitData, regressionConfig, regressionGroupByKey);
 	// Convenience alias — perGroupBreak is the user-facing name for this mode.
 	const perGroupBreak = regressionConfig.perGroupBreak;
 
@@ -250,17 +283,27 @@ const Scatter = () => {
 				y: (d) => dependentScale(getDependentValue(d)),
 				width: innerWidth,
 				height: innerHeight,
-			})(voronoiData),
-		[innerWidth, innerHeight, independentScale, dependentScale, voronoiData, getIndependentValue, getDependentValue]
+			})(voronoiHitData),
+		[
+			innerWidth,
+			innerHeight,
+			independentScale,
+			dependentScale,
+			voronoiHitData,
+			getIndependentValue,
+			getDependentValue,
+		]
 	);
 
 	// GET SHARED LAYOUT PROPS
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 	const {
 		dependentAxisProps,
@@ -301,7 +344,7 @@ const Scatter = () => {
 		if (!labels.active || !labels.autoDeclutter) {
 			return [];
 		}
-		return buildScatterLabelInputs({
+		const inputs = buildScatterLabelInputs({
 			categories: dataRender.categories,
 			flattenedData,
 			labels,
@@ -310,14 +353,40 @@ const Scatter = () => {
 			dependentScale,
 			getIndependentValue,
 		});
+		if (!seriesMaskView.armed) {
+			return inputs;
+		}
+		return inputs.filter((input) => {
+			for (let categoryIndex = 0; categoryIndex < dataRender.categories.length; categoryIndex++) {
+				const category = dataRender.categories[categoryIndex];
+				const categoryData = flattenedData.filter(
+					(d: FlatData) => d[category] !== '' && d[category] !== null && d[category] !== undefined
+				);
+				for (let pointIndex = 0; pointIndex < categoryData.length; pointIndex++) {
+					const d = categoryData[pointIndex];
+					if (buildScatterLabelId(categoryIndex, category, d, pointIndex) !== input.id) {
+						continue;
+					}
+					const labelHideKey = markHideKey({
+						category,
+						row: d as Record<string, unknown>,
+						groupColumn: dataRender.groupBreaksCategory,
+					});
+					return !seriesMaskView.isHidden(labelHideKey);
+				}
+			}
+			return true;
+		});
 	}, [
 		labels,
 		dataRender.categories,
+		dataRender.groupBreaksCategory,
 		flattenedData,
 		labelProps,
 		independentScale,
 		dependentScale,
 		getIndependentValue,
+		seriesMaskView,
 	]);
 
 	const scatterLabelOffsets = useLabelDeclutter(
@@ -344,6 +413,12 @@ const Scatter = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+
+	useEffect(() => {
+		if (seriesMaskView.armed && seriesMaskView.revision > 0) {
+			hideTooltip();
+		}
+	}, [seriesMaskView.armed, seriesMaskView.revision, hideTooltip]);
 
 	// The voronoi handler tooltips the raw flat row, while the marker handler
 	// synthesizes a payload that omits the source columns. Variable sizing needs
@@ -405,7 +480,8 @@ const Scatter = () => {
 			getIndependentValue,
 			innerWidth,
 			innerHeight,
-			layout,
+			padding.left,
+			padding.top,
 			tooltipTimeout,
 		]
 	);
@@ -503,9 +579,12 @@ const Scatter = () => {
 											const groupValue = getGroupValue(d, dataRender);
 											const shapeKey = generateElementKey(d.x, category, groupValue);
 											const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-											const categoryKey = dataRender.groupBreaksCategory
-												? String(d[dataRender.groupBreaksCategory] ?? '')
-												: category;
+											const categoryKey = markHideKey({
+												category,
+												row: d as Record<string, unknown>,
+												groupColumn: dataRender.groupBreaksCategory,
+											});
+											const seriesHidden = seriesMaskView.isHidden(categoryKey);
 											const fallbackColor = dataRender.groupBreaksCategory
 												? colorScale(categoryKey)
 												: colors[i];
@@ -528,13 +607,16 @@ const Scatter = () => {
 											const shapeStroke = customShapeStyles.stroke || defaultStroke;
 											const shapeStrokeWidth =
 												customShapeStyles.strokeWidth ?? nodes.pointStrokeWidth;
-											const markOpacity = (customShapeStyles.opacity ?? 1) * categoryOpacity;
+											const markOpacity =
+												(customShapeStyles.opacity ?? 1) *
+												categoryOpacity *
+												(seriesHidden ? 0 : 1);
 											const pointRadius = getPointRadius(d);
 
 											return (
 												<StyledAnimatedCircle
 													key={`scatter-category-${i}-node-${j}`}
-													tabIndex={0}
+													tabIndex={seriesHidden ? -1 : 0}
 													r={pointRadius}
 													cx={independentScale(getIndependentValue(d)) ?? 0}
 													cy={dependentScale(d[category]) ?? 0}
@@ -543,7 +625,10 @@ const Scatter = () => {
 													opacity={markOpacity}
 													style={{
 														cursor: wpEditorFunctions?.shapes ? 'pointer' : undefined,
-														pointerEvents: wpEditorFunctions?.shapes ? 'all' : undefined,
+														pointerEvents: pointerEventsForMark(
+															seriesHidden,
+															wpEditorFunctions?.shapes
+														),
 													}}
 													onClick={(event: React.MouseEvent) => {
 														if (wpEditorFunctions?.shapes?.onClick) {
@@ -585,6 +670,9 @@ const Scatter = () => {
 														}, 300);
 													}}
 													onFocus={() => {
+														if (seriesHidden) {
+															return;
+														}
 														if (tooltipTimeout) clearTimeout(tooltipTimeout);
 														const { body: _sfTip, header: _sfHdr } = getCustomTooltip(
 															d,
@@ -618,6 +706,15 @@ const Scatter = () => {
 											filteredData?.map((d: FlatData, j: number) => {
 												// Check visibility - don't render if hidden
 												if (!isLabelVisible(d, category)) {
+													return null;
+												}
+
+												const labelHideKey = markHideKey({
+													category,
+													row: d as Record<string, unknown>,
+													groupColumn: dataRender.groupBreaksCategory,
+												});
+												if (seriesMaskView.isHidden(labelHideKey)) {
 													return null;
 												}
 
@@ -656,18 +753,6 @@ const Scatter = () => {
 												const labelFallbackColor = dataRender.groupBreaksCategory
 													? colorScale(labelCategoryKey)
 													: colors[i];
-												const pointColorForLabel = resolveCategoryColor({
-													category: labelCategoryKey,
-													fallback: labelFallbackColor,
-													dataRender,
-												});
-												const inlineLabelFill = getLabelFill({
-													labelColor: labels.color,
-													seriesColor: pointColorForLabel,
-												});
-
-												const anchorX = independentScale(getIndependentValue(d));
-												const anchorY = dependentScale(d[category]);
 												const labelId = buildScatterLabelId(i, category, d, j);
 												const { dx, dy, hidden } = getDeclutterOffset(
 													scatterLabelOffsets,
@@ -678,6 +763,18 @@ const Scatter = () => {
 												if (hidden) {
 													return null;
 												}
+
+												const pointColorForLabel = resolveCategoryColor({
+													category: labelCategoryKey,
+													fallback: labelFallbackColor,
+													dataRender,
+												});
+												const inlineLabelFill = getLabelFill({
+													labelColor: labels.color,
+													seriesColor: pointColorForLabel,
+												});
+												const anchorX = independentScale(getIndependentValue(d));
+												const anchorY = dependentScale(d[category]);
 
 												return (
 													<AnimatedLabel
@@ -751,6 +848,7 @@ const Scatter = () => {
 													const isHovered =
 														wpEditorFunctions?.regression &&
 														hoveredRegressionKey === groupKey;
+													const regressionHidden = seriesMaskView.isHidden(groupKey);
 
 													const points = catData.map(
 														(d: any) => `${regressionX(d)},${regressionY(d)}`
@@ -761,6 +859,7 @@ const Scatter = () => {
 														<g
 															key={`regression-${groupKey}`}
 															className="regression-line-group"
+															opacity={regressionHidden ? 0 : 1}
 														>
 															{wpEditorFunctions?.regression && (
 																<path
@@ -940,22 +1039,6 @@ const Scatter = () => {
 										// Don't render if no content
 										if (!labelContent) return null;
 
-										const pointColor = resolveCategoryColor({
-											category: dataRender.groupBreaksCategory
-												? String(d[dataRender.groupBreaksCategory] ?? '')
-												: category,
-											fallback: dataRender.groupBreaksCategory
-												? colorScale(String(d[dataRender.groupBreaksCategory] ?? ''))
-												: colors[i],
-											dataRender,
-										});
-										const draggableLabelFill = getLabelFill({
-											labelColor: labels.color,
-											seriesColor: pointColor,
-										});
-
-										const editorAnchorX = independentScale(getIndependentValue(d));
-										const editorAnchorY = dependentScale(d[category]);
 										const editorLabelId = buildScatterLabelId(i, category, d, j);
 										const {
 											dx: editorDx,
@@ -970,6 +1053,22 @@ const Scatter = () => {
 										if (editorHidden) {
 											return null;
 										}
+
+										const pointColor = resolveCategoryColor({
+											category: dataRender.groupBreaksCategory
+												? String(d[dataRender.groupBreaksCategory] ?? '')
+												: category,
+											fallback: dataRender.groupBreaksCategory
+												? colorScale(String(d[dataRender.groupBreaksCategory] ?? ''))
+												: colors[i],
+											dataRender,
+										});
+										const draggableLabelFill = getLabelFill({
+											labelColor: labels.color,
+											seriesColor: pointColor,
+										});
+										const editorAnchorX = independentScale(getIndependentValue(d));
+										const editorAnchorY = dependentScale(d[category]);
 
 										return (
 											<DraggableLabel
@@ -1029,65 +1128,74 @@ const Scatter = () => {
 					</StyledLegend>
 				)}
 
-				{tooltipOpen && tooltipData && tooltipVisible && (
-					<StyledTooltip
-						top={tooltipTop}
-						left={tooltipLeft}
-						tooltip={tooltip}
-						cursorX={cursorPosition?.x}
-						cursorY={cursorPosition?.y}
-						containerRef={svgRef}
-						isMobile={isMobileTooltip}
-					>
-						<>
-							{tooltip.headerActive && (
-								<div
-									style={{
-										marginBottom: '10px',
-									}}
-								>
-									<strong>
-										{tooltipData.tooltipHeader
-											? tooltipData.tooltipHeader
-											: getTooltipHeaderFormat(
-													{
-														x: getIndependentValue(tooltipData),
-														category: tooltipData.category,
-													},
-													tooltip
-												)}
-									</strong>
-								</div>
-							)}
-						</>
+				{tooltipOpen &&
+					tooltipData &&
+					tooltipVisible &&
+					!seriesMaskShouldHideTooltip(seriesMaskView, {
+						markHideKey: markHideKey({
+							category: String(tooltipData.category ?? ''),
+							row: tooltipData as Record<string, unknown>,
+							groupColumn: dataRender.groupBreaksCategory,
+						}),
+					}) && (
+						<StyledTooltip
+							top={tooltipTop}
+							left={tooltipLeft}
+							tooltip={tooltip}
+							cursorX={cursorPosition?.x}
+							cursorY={cursorPosition?.y}
+							containerRef={svgRef}
+							isMobile={isMobileTooltip}
+						>
+							<>
+								{tooltip.headerActive && (
+									<div
+										style={{
+											marginBottom: '10px',
+										}}
+									>
+										<strong>
+											{tooltipData.tooltipHeader
+												? tooltipData.tooltipHeader
+												: getTooltipHeaderFormat(
+														{
+															x: getIndependentValue(tooltipData),
+															category: tooltipData.category,
+														},
+														tooltip
+													)}
+										</strong>
+									</div>
+								)}
+							</>
 
-						<div
-							dangerouslySetInnerHTML={{
-								__html: tooltipData.tooltip
-									? tooltipData.tooltip
-									: getTooltipFormat(
-											{
-												x: getIndependentValue(tooltipData),
-												y: getDependentValue(tooltipData),
-												category: tooltipData.category,
-												color: resolveCategoryColor({
-													category: dataRender.groupBreaksCategory
-														? String(tooltipData.colorGroup ?? '')
-														: tooltipData.category || '',
-													fallback: dataRender.groupBreaksCategory
-														? colorScale(tooltipData.colorGroup ?? '')
-														: colorScale(tooltipData.category || ''),
-													dataRender,
-												}),
-												data: tooltipData,
-											},
-											tooltip,
-											dataRender
-										),
-							}}
-						/>
-					</StyledTooltip>
-				)}
+							<div
+								dangerouslySetInnerHTML={{
+									__html: tooltipData.tooltip
+										? tooltipData.tooltip
+										: getTooltipFormat(
+												{
+													x: getIndependentValue(tooltipData),
+													y: getDependentValue(tooltipData),
+													category: tooltipData.category,
+													color: resolveCategoryColor({
+														category: dataRender.groupBreaksCategory
+															? String(tooltipData.colorGroup ?? '')
+															: tooltipData.category || '',
+														fallback: dataRender.groupBreaksCategory
+															? colorScale(tooltipData.colorGroup ?? '')
+															: colorScale(tooltipData.category || ''),
+														dataRender,
+													}),
+													data: tooltipData,
+												},
+												tooltip,
+												dataRender
+											),
+								}}
+							/>
+						</StyledTooltip>
+					)}
 			</div>
 		</TransitionProvider>
 	);

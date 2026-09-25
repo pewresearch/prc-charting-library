@@ -1,6 +1,8 @@
-import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef } from 'react';
+/* eslint-disable @typescript-eslint/no-shadow */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { CSSProperties, RefObject, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 
-import type { BaseConfig, FlatData, GroupedData, Size, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, GroupedData, Size, TableData, SeriesMaskView } from '@prc/charting-utilities';
 import {
 	DataContext,
 	generateElementKey,
@@ -29,6 +31,8 @@ import {
 	resolveLinearScaleDomain,
 	resolveScaleNice,
 	useSize,
+	INERT_SERIES_MASK,
+	seriesMaskShouldHideTooltip,
 } from '@prc/charting-utilities';
 import { DiffColumn } from './DiffColumn';
 import {
@@ -84,13 +88,39 @@ function divergingRowTooltipGroups(
 	return [tooltipSide === 'left' ? negative : positive];
 }
 
+function secondarySwatchColor(
+	secondary: NonNullable<BaseConfig['divergingBar']['secondary']>,
+	category: string
+): string {
+	const style = secondary.categoryStyles?.[category] ?? {};
+	const fill = style.fill !== undefined ? style.fill : secondary.fill;
+	if (fill && fill !== 'transparent' && fill !== 'none') {
+		return fill;
+	}
+	return style.stroke ?? secondary.stroke ?? 'none';
+}
+
+function pointerEventsForMark(hidden: boolean, editorShapesActive: unknown): 'none' | 'all' | undefined {
+	if (hidden) {
+		return 'none';
+	}
+	return editorShapesActive ? 'all' : undefined;
+}
+
 const DivergingBarHorizontal = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const {
+		data,
+		config,
+		tableData,
+		wpEditorFunctions,
+		seriesMask = INERT_SERIES_MASK,
+	} = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -111,6 +141,8 @@ const DivergingBarHorizontal = () => {
 		annotations,
 		drawings,
 	} = config as BaseConfig;
+
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
 
 	const { width, height, parentClass, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
@@ -175,7 +207,7 @@ const DivergingBarHorizontal = () => {
 
 	const chartHeight = useMemo(() => {
 		return dataRender.groupBreaksActive ? actualContentHeight + padding.top + padding.bottom : height;
-	}, [actualContentHeight, padding.top, padding.bottom, height]);
+	}, [dataRender.groupBreaksActive, actualContentHeight, padding.top, padding.bottom, height]);
 
 	const dependentScale = useMemo(
 		() =>
@@ -215,11 +247,7 @@ const DivergingBarHorizontal = () => {
 				...divergingBar.secondary.negativeCategories,
 				...divergingBar.secondary.positiveCategories,
 			];
-			const secondaryFills = secondaryCats.map((cat) => {
-				const cs = divergingBar.secondary!.categoryStyles?.[cat] ?? {};
-				const f = cs.fill !== undefined ? cs.fill : divergingBar.secondary!.fill;
-				return f ?? 'none';
-			});
+			const secondaryFills = secondaryCats.map((cat) => secondarySwatchColor(divergingBar.secondary!, cat));
 			domain.push(...secondaryCats);
 			range.push(...secondaryFills);
 		}
@@ -234,13 +262,15 @@ const DivergingBarHorizontal = () => {
 	}
 	independentScale.rangeRound([innerHeight, 0]);
 
-	const sharedPropsData = groupedData.length > 0 ? groupedData[0].data : [];
+	const sharedPropsData = useMemo(() => (groupedData.length > 0 ? groupedData[0].data : []), [groupedData]);
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 	const {
 		dependentAxisProps,
@@ -287,6 +317,12 @@ const DivergingBarHorizontal = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+
+	useEffect(() => {
+		if (seriesMaskView.armed && seriesMaskView.revision > 0) {
+			hideTooltip();
+		}
+	}, [seriesMaskView.armed, seriesMaskView.revision, hideTooltip]);
 
 	const secondaryActive = !!divergingBar.secondary?.active;
 
@@ -473,8 +509,11 @@ const DivergingBarHorizontal = () => {
 														(barConfig.hasRectStroke
 															? barConfig.rectStrokeWidth
 															: undefined);
+													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
-														(customShapeStyles.opacity ?? 1) * categoryOpacity;
+														(customShapeStyles.opacity ?? 1) *
+														categoryOpacity *
+														(seriesHidden ? 0 : 1);
 
 													const labelPosition = withDivergingBarLabelDx(
 														positionBarLabel(
@@ -502,7 +541,7 @@ const DivergingBarHorizontal = () => {
 																key={`barstack-horizontal-${barStack.index}-${bar.index}`}
 																x={bar.x}
 																y={bar.y}
-																tabIndex={0}
+																tabIndex={seriesHidden ? -1 : 0}
 																width={barValue ? Math.abs(bar.width) : 0}
 																height={bar.height}
 																fill={shapeFill}
@@ -513,9 +552,10 @@ const DivergingBarHorizontal = () => {
 																	cursor: wpEditorFunctions?.shapes
 																		? 'pointer'
 																		: undefined,
-																	pointerEvents: wpEditorFunctions?.shapes
-																		? 'all'
-																		: undefined,
+																	pointerEvents: pointerEventsForMark(
+																		seriesHidden,
+																		wpEditorFunctions?.shapes
+																	),
 																}}
 																onClick={(event: React.MouseEvent) => {
 																	if (wpEditorFunctions?.shapes?.onClick) {
@@ -545,6 +585,9 @@ const DivergingBarHorizontal = () => {
 																	}, 300);
 																}}
 																onMouseMove={(event) => {
+																	if (seriesHidden) {
+																		return;
+																	}
 																	if (tooltipTimeout) clearTimeout(tooltipTimeout);
 																	if (!svgRef.current) return;
 																	const eventSvgCoords = getLocalPoint(
@@ -577,6 +620,9 @@ const DivergingBarHorizontal = () => {
 																	}, 300);
 																}}
 																onFocus={() => {
+																	if (seriesHidden) {
+																		return;
+																	}
 																	if (tooltipTimeout) clearTimeout(tooltipTimeout);
 																	const focusSide: 'left' | 'right' =
 																		divergingBar.negativeCategories.includes(
@@ -597,7 +643,8 @@ const DivergingBarHorizontal = () => {
 															/>
 															{barValue &&
 																labels.active &&
-																labelCutoff < Math.abs(barValue) && (
+																labelCutoff < Math.abs(barValue) &&
+																!seriesHidden && (
 																	<AnimatedBarLabel
 																		key={`barstack-horizontal-label-${barStack.index}-${bar.index}`}
 																		x={labelPosition.x}
@@ -690,10 +737,11 @@ const DivergingBarHorizontal = () => {
 																catStyle.strokeWidth ??
 																divergingBar.secondary!.strokeWidth ??
 																0.5;
+															const seriesHidden = seriesMaskView.isHidden(category);
 															const ghostOpacity =
-																catStyle.opacity ??
-																divergingBar.secondary!.opacity ??
-																0.4;
+																(catStyle.opacity ??
+																	divergingBar.secondary!.opacity ??
+																	0.4) * (seriesHidden ? 0 : 1);
 															return (
 																<AnimatedBar
 																	orientation="horizontal"
@@ -872,8 +920,11 @@ const DivergingBarHorizontal = () => {
 														(barConfig.hasRectStroke
 															? barConfig.rectStrokeWidth
 															: undefined);
+													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
-														(customShapeStyles.opacity ?? 1) * categoryOpacity;
+														(customShapeStyles.opacity ?? 1) *
+														categoryOpacity *
+														(seriesHidden ? 0 : 1);
 
 													const labelPosition = withDivergingBarLabelDx(
 														positionBarLabel(
@@ -902,7 +953,7 @@ const DivergingBarHorizontal = () => {
 																key={`barstack-horizontal-neutral-${barStack.index}-${bar.index}`}
 																x={bar.x}
 																y={bar.y}
-																tabIndex={0}
+																tabIndex={seriesHidden ? -1 : 0}
 																width={barValue ? Math.abs(bar.width) : 0}
 																height={bar.height}
 																fill={shapeFill}
@@ -913,9 +964,10 @@ const DivergingBarHorizontal = () => {
 																	cursor: wpEditorFunctions?.shapes
 																		? 'pointer'
 																		: undefined,
-																	pointerEvents: wpEditorFunctions?.shapes
-																		? 'all'
-																		: undefined,
+																	pointerEvents: pointerEventsForMark(
+																		seriesHidden,
+																		wpEditorFunctions?.shapes
+																	),
 																}}
 																onClick={(event: React.MouseEvent) => {
 																	if (wpEditorFunctions?.shapes?.onClick) {
@@ -945,6 +997,9 @@ const DivergingBarHorizontal = () => {
 																	}, 300);
 																}}
 																onMouseMove={(event) => {
+																	if (seriesHidden) {
+																		return;
+																	}
 																	if (tooltipTimeout) clearTimeout(tooltipTimeout);
 																	if (!svgRef.current) return;
 																	const eventSvgCoords = getLocalPoint(
@@ -968,7 +1023,7 @@ const DivergingBarHorizontal = () => {
 																	});
 																}}
 															/>
-															{barValue && labels.active && (
+															{barValue && labels.active && !seriesHidden && (
 																<AnimatedBarLabel
 																	key={`barstack-horizontal-neutral-label-${barStack.index}-${bar.index}`}
 																	x={labelPosition.x}
@@ -1083,111 +1138,128 @@ const DivergingBarHorizontal = () => {
 						</LegendOrdinal>
 					</StyledLegend>
 				)}
-				{tooltipOpen && tooltipData && tooltipVisible && (
-					<StyledTooltip
-						top={tooltipTop}
-						left={tooltipLeft}
-						tooltip={tooltip}
-						containerRef={svgRef}
-						isMobile={isMobileTooltip}
-					>
-						<>
-							{tooltip.headerActive && (
-								<div
-									style={{
-										marginBottom: '10px',
-									}}
-								>
-									<strong>
-										{tooltipData.tooltipHeader
-											? tooltipData.tooltipHeader
-											: getTooltipHeaderFormat(
-													{
-														x: tooltipData.x,
-														category: tooltipData.category,
-													},
-													tooltip
-												)}
-									</strong>
-								</div>
-							)}
-						</>
-						{tooltipData.tooltipMode === 'row' ? (
-							<div>
-								{divergingRowTooltipGroups(
-									divergingBar,
-									secondaryActive,
-									tooltipData.tooltipSide,
-									tooltip.mode === 'unified'
-								).map((group, groupIndex) => (
-									<div key={`tooltip-group-${groupIndex}`}>
-										{groupIndex > 0 && (
-											<div
-												style={{
-													borderTop: '1px solid light-dark(#dadbdb, #3a3a3a)',
-													margin: '8px 0',
-												}}
-											/>
-										)}
-										{group.map((cat: string) => {
-											const raw = tooltipData[cat];
-											if (raw === null || raw === undefined) return null;
-											const val = typeof raw === 'number' ? Math.abs(raw) : raw;
-											const { body: customBody } = getCustomTooltip(tooltipData, cat);
-											const secondaryFill =
-												secondaryActive &&
-												(divergingBar.secondary!.positiveCategories.includes(cat) ||
-													divergingBar.secondary!.negativeCategories.includes(cat))
-													? (divergingBar.secondary!.categoryStyles?.[cat]?.fill ??
-														divergingBar.secondary!.fill)
-													: undefined;
-											const html = customBody
-												? customBody
-												: getTooltipFormat(
+				{tooltipOpen &&
+					tooltipData &&
+					tooltipVisible &&
+					!seriesMaskShouldHideTooltip(seriesMaskView, {
+						tooltipMode: tooltipData.tooltipMode,
+						category: tooltipData.category,
+						rowCategoryKeys:
+							tooltipData.tooltipMode === 'row'
+								? divergingRowTooltipGroups(
+										divergingBar,
+										secondaryActive,
+										tooltipData.tooltipSide,
+										tooltip.mode === 'unified'
+									).flat()
+								: undefined,
+					}) && (
+						<StyledTooltip
+							top={tooltipTop}
+							left={tooltipLeft}
+							tooltip={tooltip}
+							containerRef={svgRef}
+							isMobile={isMobileTooltip}
+						>
+							<>
+								{tooltip.headerActive && (
+									<div
+										style={{
+											marginBottom: '10px',
+										}}
+									>
+										<strong>
+											{tooltipData.tooltipHeader
+												? tooltipData.tooltipHeader
+												: getTooltipHeaderFormat(
 														{
 															x: tooltipData.x,
-															y: val,
-															category: cat,
-															color: resolveCategoryColor({
-																category: cat,
-																fallback: secondaryFill ?? colorScale(cat),
-																dataRender,
-															}),
-															data: tooltipData,
+															category: tooltipData.category,
 														},
-														tooltip,
-														dataRender
-													);
-											return <div key={cat} dangerouslySetInnerHTML={{ __html: html }} />;
-										})}
+														tooltip
+													)}
+										</strong>
 									</div>
-								))}
-							</div>
-						) : (
-							<div
-								dangerouslySetInnerHTML={{
-									__html: tooltipData.tooltip
-										? tooltipData.tooltip
-										: getTooltipFormat(
-												{
-													x: tooltipData.x,
-													y: tooltipData.y,
-													category: tooltipData.category,
-													color: resolveCategoryColor({
-														category: tooltipData.category || '',
-														fallback: colorScale(tooltipData.category || ''),
-														dataRender,
-													}),
-													data: tooltipData,
-												},
-												tooltip,
-												dataRender
-											),
-								}}
-							/>
-						)}
-					</StyledTooltip>
-				)}
+								)}
+							</>
+							{tooltipData.tooltipMode === 'row' ? (
+								<div>
+									{divergingRowTooltipGroups(
+										divergingBar,
+										secondaryActive,
+										tooltipData.tooltipSide,
+										tooltip.mode === 'unified'
+									)
+										.map((group) => group.filter((cat) => !seriesMaskView.isHidden(cat)))
+										.filter((group) => group.length > 0)
+										.map((group, groupIndex) => (
+											<div key={`tooltip-group-${groupIndex}`}>
+												{groupIndex > 0 && (
+													<div
+														style={{
+															borderTop: '1px solid light-dark(#dadbdb, #3a3a3a)',
+															margin: '8px 0',
+														}}
+													/>
+												)}
+												{group.map((cat: string) => {
+													const raw = tooltipData[cat];
+													if (raw === null || raw === undefined) return null;
+													const val = typeof raw === 'number' ? Math.abs(raw) : raw;
+													const { body: customBody } = getCustomTooltip(tooltipData, cat);
+													const secondaryFill =
+														secondaryActive &&
+														(divergingBar.secondary!.positiveCategories.includes(cat) ||
+															divergingBar.secondary!.negativeCategories.includes(cat))
+															? secondarySwatchColor(divergingBar.secondary!, cat)
+															: undefined;
+													const html = customBody
+														? customBody
+														: getTooltipFormat(
+																{
+																	x: tooltipData.x,
+																	y: val,
+																	category: cat,
+																	color: resolveCategoryColor({
+																		category: cat,
+																		fallback: secondaryFill ?? colorScale(cat),
+																		dataRender,
+																	}),
+																	data: tooltipData,
+																},
+																tooltip,
+																dataRender
+															);
+													return <div key={cat} dangerouslySetInnerHTML={{ __html: html }} />;
+												})}
+											</div>
+										))}
+								</div>
+							) : (
+								<div
+									dangerouslySetInnerHTML={{
+										__html: tooltipData.tooltip
+											? tooltipData.tooltip
+											: getTooltipFormat(
+													{
+														x: tooltipData.x,
+														y: tooltipData.y,
+														category: tooltipData.category,
+														color: resolveCategoryColor({
+															category: tooltipData.category || '',
+															fallback: colorScale(tooltipData.category || ''),
+															dataRender,
+														}),
+														data: tooltipData,
+													},
+													tooltip,
+													dataRender
+												),
+									}}
+								/>
+							)}
+						</StyledTooltip>
+					)}
 			</div>
 		</TransitionProvider>
 	);
