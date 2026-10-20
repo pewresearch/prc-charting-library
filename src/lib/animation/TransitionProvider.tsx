@@ -135,7 +135,8 @@ export function TransitionProvider({ data, family = 'bar', children }: Transitio
 	}
 
 	const kind: ProviderState['kind'] = dataChanged ? 'update' : state.kind;
-	const phase: TransitionPhase = dataChanged ? (update.immediate ? 'visible' : 'exiting') : state.phase;
+	const updatePhase: TransitionPhase = update.immediate ? 'visible' : 'exiting';
+	const phase: TransitionPhase = dataChanged ? updatePhase : state.phase;
 	const epoch = state.epoch;
 	const activeTiming = kind === 'initial' ? initial : update;
 

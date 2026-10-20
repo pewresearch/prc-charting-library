@@ -24,6 +24,9 @@ import {
 	positionBarLabel,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveBarPaint,
+	resolveDivergingSecondaryPaint,
+	resolvePatternFill,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
 	getLinearValueDataExtent,
@@ -41,6 +44,7 @@ import {
 	BreakLine,
 	ClickableLegend,
 	ClickableTicks,
+	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
 } from '../overlays';
@@ -88,18 +92,6 @@ function divergingRowTooltipGroups(
 	return [tooltipSide === 'left' ? negative : positive];
 }
 
-function secondarySwatchColor(
-	secondary: NonNullable<BaseConfig['divergingBar']['secondary']>,
-	category: string
-): string {
-	const style = secondary.categoryStyles?.[category] ?? {};
-	const fill = style.fill !== undefined ? style.fill : secondary.fill;
-	if (fill && fill !== 'transparent' && fill !== 'none') {
-		return fill;
-	}
-	return style.stroke ?? secondary.stroke ?? 'none';
-}
-
 function pointerEventsForMark(hidden: boolean, editorShapesActive: unknown): 'none' | 'all' | undefined {
 	if (hidden) {
 		return 'none';
@@ -140,6 +132,7 @@ const DivergingBarHorizontal = () => {
 		netValues,
 		annotations,
 		drawings,
+		seriesStyles,
 	} = config as BaseConfig;
 
 	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
@@ -234,6 +227,31 @@ const DivergingBarHorizontal = () => {
 		]
 	);
 
+	const resolveSecondaryPaint = useCallback(
+		(category: string) => {
+			const secondary = divergingBar.secondary;
+			const legacyStyle = secondary?.categoryStyles?.[category];
+			const legacyPaint = legacyStyle
+				? {
+						...legacyStyle,
+						fill: legacyStyle.fill === null ? 'none' : legacyStyle.fill,
+					}
+				: undefined;
+
+			return resolveDivergingSecondaryPaint(
+				{
+					fill: secondary?.fill ?? 'none',
+					stroke: secondary?.stroke ?? 'light-dark(#000000, #ffffff)',
+					strokeWidth: secondary?.strokeWidth ?? 0.5,
+					opacity: secondary?.opacity ?? 0.4,
+				},
+				legacyPaint,
+				seriesStyles?.[category]
+			);
+		},
+		[divergingBar.secondary, seriesStyles]
+	);
+
 	const colorScale = useMemo(() => {
 		const domain = [...divergingBar.negativeCategories, ...divergingBar.positiveCategories];
 		const range = [...colors];
@@ -247,13 +265,13 @@ const DivergingBarHorizontal = () => {
 				...divergingBar.secondary.negativeCategories,
 				...divergingBar.secondary.positiveCategories,
 			];
-			const secondaryFills = secondaryCats.map((cat) => secondarySwatchColor(divergingBar.secondary!, cat));
+			const secondaryFills = secondaryCats.map((cat) => resolveSecondaryPaint(cat).fill ?? 'none');
 			domain.push(...secondaryCats);
 			range.push(...secondaryFills);
 		}
 
 		return scaleOrdinal<string, string>({ domain, range });
-	}, [divergingBar, colors, tooltip.mode]);
+	}, [divergingBar, colors, tooltip.mode, resolveSecondaryPaint]);
 
 	if (divergingBar.neutralBar.active) {
 		dependentScale.rangeRound([0, innerWidth * divergingBar.percentOfInnerWidth]);
@@ -343,6 +361,7 @@ const DivergingBarHorizontal = () => {
 					{...ariaProps}
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 				>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
 					<Group top={padding.top} left={padding.left} role="presentation">
 						<GridColumns {...dependentGridProps} />
 						{independentAxis.active && (
@@ -498,22 +517,24 @@ const DivergingBarHorizontal = () => {
 														dataRender,
 													});
 
-													const shapeFill = customShapeStyles.fill || defaultColor;
-													const shapeStroke =
-														customShapeStyles.stroke ||
-														(barConfig.hasRectStroke
-															? barConfig.rectStrokeColor
-															: undefined);
-													const shapeStrokeWidth =
-														customShapeStyles.strokeWidth ||
-														(barConfig.hasRectStroke
-															? barConfig.rectStrokeWidth
-															: undefined);
+													const paint = resolveBarPaint(
+														{
+															fill: defaultColor,
+															stroke: barConfig.hasRectStroke
+																? barConfig.rectStrokeColor
+																: undefined,
+															strokeWidth: barConfig.hasRectStroke
+																? barConfig.rectStrokeWidth
+																: undefined,
+															opacity: 1,
+														},
+														seriesStyles?.[category],
+														customShapeStyles
+													);
+													const shapeFill = resolvePatternFill(paint, category);
 													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
-														(customShapeStyles.opacity ?? 1) *
-														categoryOpacity *
-														(seriesHidden ? 0 : 1);
+														(paint.opacity ?? 1) * categoryOpacity * (seriesHidden ? 0 : 1);
 
 													const labelPosition = withDivergingBarLabelDx(
 														positionBarLabel(
@@ -545,8 +566,10 @@ const DivergingBarHorizontal = () => {
 																width={barValue ? Math.abs(bar.width) : 0}
 																height={bar.height}
 																fill={shapeFill}
-																stroke={shapeStroke}
-																strokeWidth={shapeStrokeWidth}
+																stroke={paint.stroke}
+																strokeWidth={paint.strokeWidth}
+																strokeOpacity={paint.strokeOpacity}
+																strokeDasharray={paint.strokeDasharray}
 																opacity={shapeOpacity}
 																style={{
 																	cursor: wpEditorFunctions?.shapes
@@ -705,12 +728,7 @@ const DivergingBarHorizontal = () => {
 												y={getIndependentValue}
 												xScale={dependentScale}
 												yScale={groupScale}
-												color={(key) => {
-													const cs = divergingBar.secondary!.categoryStyles?.[key] ?? {};
-													const f =
-														cs.fill !== undefined ? cs.fill : divergingBar.secondary!.fill;
-													return f ?? 'none';
-												}}
+												color={(key) => resolveSecondaryPaint(key).fill ?? 'none'}
 												offset={'diverging'}
 												width={innerWidth * divergingBar.percentOfInnerWidth}
 											>
@@ -721,27 +739,10 @@ const DivergingBarHorizontal = () => {
 															const category = bar.key;
 															const barValue: number =
 																barData[category as keyof typeof barData];
-															const catStyle =
-																divergingBar.secondary!.categoryStyles?.[category] ??
-																{};
-															const resolvedFill =
-																catStyle.fill !== undefined
-																	? catStyle.fill
-																	: divergingBar.secondary!.fill;
-															const ghostFill = resolvedFill ?? 'none';
-															const ghostStroke =
-																catStyle.stroke ??
-																divergingBar.secondary!.stroke ??
-																'#000';
-															const ghostStrokeWidth =
-																catStyle.strokeWidth ??
-																divergingBar.secondary!.strokeWidth ??
-																0.5;
+															const paint = resolveSecondaryPaint(category);
 															const seriesHidden = seriesMaskView.isHidden(category);
 															const ghostOpacity =
-																(catStyle.opacity ??
-																	divergingBar.secondary!.opacity ??
-																	0.4) * (seriesHidden ? 0 : 1);
+																(paint.opacity ?? 0.4) * (seriesHidden ? 0 : 1);
 															return (
 																<AnimatedBar
 																	orientation="horizontal"
@@ -749,11 +750,12 @@ const DivergingBarHorizontal = () => {
 																	key={`ghost-${barStack.index}-${bar.index}`}
 																	x={bar.x}
 																	y={bar.y}
+																	tabIndex={seriesHidden ? -1 : 0}
 																	width={barValue ? Math.abs(bar.width) : 0}
 																	height={bar.height}
-																	fill={ghostFill}
-																	stroke={ghostStroke}
-																	strokeWidth={ghostStrokeWidth}
+																	fill={paint.fill ?? 'none'}
+																	stroke={paint.stroke}
+																	strokeWidth={paint.strokeWidth}
 																	opacity={ghostOpacity}
 																/>
 															);
@@ -909,22 +911,24 @@ const DivergingBarHorizontal = () => {
 														dataRender,
 													});
 
-													const shapeFill = customShapeStyles.fill || defaultColor;
-													const shapeStroke =
-														customShapeStyles.stroke ||
-														(barConfig.hasRectStroke
-															? barConfig.rectStrokeColor
-															: undefined);
-													const shapeStrokeWidth =
-														customShapeStyles.strokeWidth ||
-														(barConfig.hasRectStroke
-															? barConfig.rectStrokeWidth
-															: undefined);
+													const paint = resolveBarPaint(
+														{
+															fill: defaultColor,
+															stroke: barConfig.hasRectStroke
+																? barConfig.rectStrokeColor
+																: undefined,
+															strokeWidth: barConfig.hasRectStroke
+																? barConfig.rectStrokeWidth
+																: undefined,
+															opacity: 1,
+														},
+														seriesStyles?.[category],
+														customShapeStyles
+													);
+													const shapeFill = resolvePatternFill(paint, category);
 													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
-														(customShapeStyles.opacity ?? 1) *
-														categoryOpacity *
-														(seriesHidden ? 0 : 1);
+														(paint.opacity ?? 1) * categoryOpacity * (seriesHidden ? 0 : 1);
 
 													const labelPosition = withDivergingBarLabelDx(
 														positionBarLabel(
@@ -957,8 +961,10 @@ const DivergingBarHorizontal = () => {
 																width={barValue ? Math.abs(bar.width) : 0}
 																height={bar.height}
 																fill={shapeFill}
-																stroke={shapeStroke}
-																strokeWidth={shapeStrokeWidth}
+																stroke={paint.stroke}
+																strokeWidth={paint.strokeWidth}
+																strokeOpacity={paint.strokeOpacity}
+																strokeDasharray={paint.strokeDasharray}
 																opacity={shapeOpacity}
 																style={{
 																	cursor: wpEditorFunctions?.shapes
@@ -1211,7 +1217,7 @@ const DivergingBarHorizontal = () => {
 														secondaryActive &&
 														(divergingBar.secondary!.positiveCategories.includes(cat) ||
 															divergingBar.secondary!.negativeCategories.includes(cat))
-															? secondarySwatchColor(divergingBar.secondary!, cat)
+															? resolveSecondaryPaint(cat).fill
 															: undefined;
 													const html = customBody
 														? customBody

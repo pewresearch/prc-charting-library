@@ -17,7 +17,14 @@ import {
 	resolveWaffleCellSize,
 	useSize,
 } from '@prc/charting-utilities';
-import { AnnotationsLayer, ClickableLegend, DrawingsLayer, StyledLegend, StyledTooltip } from '../../overlays';
+import {
+	AnnotationsLayer,
+	ClickableLegend,
+	DrawingsLayer,
+	SeriesPatternDefs,
+	StyledLegend,
+	StyledTooltip,
+} from '../../overlays';
 import WaffleMarks from './WaffleMarks';
 
 import { Group } from '@visx/group';
@@ -47,7 +54,18 @@ const Waffle = () => {
 		}>
 	);
 
-	const { layout, colors, tooltip, legend, dataRender, shapes, waffle: waffleConfig, annotations, drawings } = config;
+	const {
+		layout,
+		colors,
+		tooltip,
+		legend,
+		dataRender,
+		shapes,
+		waffle: waffleConfig,
+		annotations,
+		drawings,
+		seriesStyles,
+	} = config;
 
 	const { width, height, parentClass, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
@@ -80,14 +98,13 @@ const Waffle = () => {
 
 	// Pie-like color domain: row labels (x), optionally ordered by legend.categories.
 	const domain = useMemo(() => {
-		const dataKeys = flattenedData.map((row) => String(row.x));
 		if (legend?.categories?.length) {
 			const filtered = legend.categories.map(String).filter((key) => dataByCategory.has(key));
 			if (filtered.length > 0) {
 				return filtered;
 			}
 		}
-		return dataKeys;
+		return flattenedData.map((row) => String(row.x));
 	}, [legend?.categories, dataByCategory, flattenedData]);
 
 	const colorScale = useMemo(
@@ -206,6 +223,9 @@ const Waffle = () => {
 					pointerEvents: tooltip.active || wpEditorFunctions?.shapes ? 'auto' : 'none',
 				}}
 			>
+				<defs>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(key) => colorScale(key)} />
+				</defs>
 				<Group top={gridTop} left={gridLeft} role="presentation">
 					<WaffleMarks
 						cells={waffleData.cells}
@@ -218,6 +238,7 @@ const Waffle = () => {
 						dataByCategory={dataByCategory}
 						dataRender={dataRender}
 						customStyles={shapes?.customStyles}
+						seriesStyles={seriesStyles}
 						wpEditorFunctions={wpEditorFunctions}
 						tooltipActive={tooltip.active}
 						onCellMouseMove={showCategoryTooltip}
@@ -291,12 +312,14 @@ const Waffle = () => {
 						dangerouslySetInnerHTML={{
 							__html:
 								getCustomTooltip(tooltipData, category).body ||
-								getTooltipFormat({
+								getTooltipFormat(
+									{
 										x: tooltipData.x,
 										y: Number(tooltipData[category]) || 0,
 										category,
 										color: colorScale(String(tooltipData.x)),
-										data: tooltipData,},
+										data: tooltipData,
+									},
 									tooltip,
 									dataRender
 								),

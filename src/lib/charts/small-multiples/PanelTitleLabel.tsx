@@ -3,13 +3,8 @@ import { Group } from '@visx/group';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
 import type { BaseConfig, TableData } from '@prc/charting-utilities';
-import {
-	contrastLabelFillForLightDark,
-	DataContext,
-	decodeHtmlEntities,
-	DEFAULT_FONT_FAMILY,
-} from '@prc/charting-utilities';
-import { wordWrap } from '../../labels';
+import { contrastLabelFillForLightDark, DataContext, DEFAULT_FONT_FAMILY, wrapRichText } from '@prc/charting-utilities';
+import { RichTextSpans } from '../../primitives/RichText';
 import {
 	scalePositionToDisplay,
 	scalePositionToLayout,
@@ -88,6 +83,33 @@ function resolveTextAlign(customization: PanelTitleCustomization | undefined, te
 	return textAlign || 'center';
 }
 
+function resolveFontStyle(fontStyle?: string): string | undefined {
+	if (fontStyle === 'italic' || fontStyle === 'oblique' || fontStyle === 'normal') {
+		return fontStyle;
+	}
+	return undefined;
+}
+
+function textDecorationFromFontStyle(fontStyle?: string): string | undefined {
+	if (fontStyle === 'underline') {
+		return 'underline';
+	}
+	if (fontStyle === 'strikethrough') {
+		return 'line-through';
+	}
+	return undefined;
+}
+
+function resolveLineHeightMultiplier(lineHeight?: number | string): number {
+	if (typeof lineHeight === 'number' && lineHeight > 0) {
+		return lineHeight;
+	}
+	if (typeof lineHeight === 'string' && lineHeight !== '') {
+		return Number(lineHeight) || 1.2;
+	}
+	return 1.2;
+}
+
 /**
  * Column/group name above a small-multiples panel.
  * SVG text + drag (annotation model), offsets via shared getPositioningScale.
@@ -125,11 +147,13 @@ export function PanelTitleLabel({
 	const hasDraggedRef = useRef(false);
 	const dragRef = useRef<SVGGElement>(null);
 
+	const { x: displayX, y: displayY } = display;
 	useEffect(() => {
 		if (isDraggingRef.current) return;
-		dragPositionRef.current = display;
-		setDragPosition(display);
-	}, [display.x, display.y]);
+		const next = { x: displayX, y: displayY };
+		dragPositionRef.current = next;
+		setDragPosition(next);
+	}, [displayX, displayY]);
 
 	const displayText =
 		typeof customization?.text === 'string' && customization.text.length > 0 ? customization.text : defaultLabel;
@@ -143,28 +167,20 @@ export function PanelTitleLabel({
 		DEFAULT_FONT_FAMILY;
 	const resolvedColor = customization?.color || fill;
 	const resolvedFontWeight = customization?.fontWeight || fontWeight;
-	const resolvedFontStyle =
-		customization?.fontStyle === 'italic' || customization?.fontStyle === 'oblique'
-			? customization.fontStyle
-			: customization?.fontStyle === 'normal'
-				? 'normal'
-				: undefined;
-	const textDecoration =
-		customization?.fontStyle === 'underline'
-			? 'underline'
-			: customization?.fontStyle === 'strikethrough'
-				? 'line-through'
-				: undefined;
+	const resolvedFontStyle = resolveFontStyle(customization?.fontStyle);
+	const textDecoration = textDecorationFromFontStyle(customization?.fontStyle);
 
 	const maxWidth =
 		typeof customization?.maxWidth === 'number' && customization.maxWidth > 0 ? customization.maxWidth : 0;
-	const lines = maxWidth ? wordWrap(displayText, maxWidth, resolvedFontSize, resolvedFontFamily) : [displayText];
-	const lineHeightMultiplier =
-		typeof customization?.lineHeight === 'number' && customization.lineHeight > 0
-			? customization.lineHeight
-			: typeof customization?.lineHeight === 'string' && customization.lineHeight !== ''
-				? Number(customization.lineHeight) || 1.2
-				: 1.2;
+	const lines = wrapRichText(
+		displayText,
+		maxWidth,
+		resolvedFontSize,
+		resolvedFontFamily,
+		resolvedFontWeight,
+		resolvedFontStyle
+	);
+	const lineHeightMultiplier = resolveLineHeightMultiplier(customization?.lineHeight);
 	const lineHeight = resolvedFontSize * lineHeightMultiplier;
 	const resolvedTextAlign = resolveTextAlign(customization, textAlign);
 	const textAnchor = textAnchorFromAlign(resolvedTextAlign);
@@ -198,6 +214,13 @@ export function PanelTitleLabel({
 		handlers?.onItemDragEnd?.(panelKey, Math.round(layoutPos.x), Math.round(layoutPos.y));
 	};
 
+	let cursor = 'default';
+	if (isDraggable) {
+		cursor = 'grab';
+	} else if (handlers?.onClick) {
+		cursor = 'pointer';
+	}
+
 	const textElement = (
 		<text
 			x={textX}
@@ -216,7 +239,7 @@ export function PanelTitleLabel({
 				paintOrder: 'stroke' as const,
 			})}
 			style={{
-				cursor: isDraggable ? 'grab' : handlers?.onClick ? 'pointer' : 'default',
+				cursor,
 				userSelect: 'none',
 				pointerEvents: 'all',
 			}}
@@ -230,7 +253,7 @@ export function PanelTitleLabel({
 		>
 			{lines.map((line, lineIndex) => (
 				<tspan key={lineIndex} x={textX} dy={lineIndex === 0 ? 0 : lineHeight}>
-					{decodeHtmlEntities(line)}
+					<RichTextSpans runs={line} />
 				</tspan>
 			))}
 		</text>

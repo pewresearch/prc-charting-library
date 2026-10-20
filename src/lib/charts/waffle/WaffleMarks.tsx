@@ -1,7 +1,7 @@
 import type { CSSProperties, MouseEvent } from 'react';
 
 import type { FlatData, ShapePaint, WaffleCell, WaffleCellShape, WaffleLayout } from '@prc/charting-utilities';
-import { generateElementKey, getGroupValue, resolveShapePaint } from '@prc/charting-utilities';
+import { generateElementKey, getGroupValue, resolvePatternFill, resolveShapePaint } from '@prc/charting-utilities';
 
 type WaffleMarksProps = {
 	cells: WaffleCell[];
@@ -18,6 +18,8 @@ type WaffleMarksProps = {
 		groupBreaksCategory?: string;
 	};
 	customStyles?: Record<string, ShapePaint>;
+	/** Series rows keyed by cell category (row label, or panel name in small multiples). */
+	seriesStyles?: Record<string, ShapePaint | undefined>;
 	wpEditorFunctions?: {
 		shapes?: {
 			onClick: (
@@ -46,6 +48,7 @@ const WaffleMarks = ({
 	dataByCategory,
 	dataRender,
 	customStyles,
+	seriesStyles,
 	wpEditorFunctions,
 	tooltipActive = false,
 	onCellMouseMove,
@@ -62,7 +65,7 @@ const WaffleMarks = ({
 
 	return (
 		<>
-			{cells.map((cell, index) => {
+			{cells.map((cell) => {
 				const isFilled = cell.categoryIndex >= 0 && cell.categoryKey;
 				const rowKey = isFilled ? cell.categoryKey! : '';
 				const dataPoint =
@@ -72,10 +75,11 @@ const WaffleMarks = ({
 				const shapeStyleKey = isFilled
 					? generateElementKey(dataPoint.x, categoryKey, groupValue)
 					: `empty::${cell.col}-${cell.row}`;
-				const paint = resolveShapePaint(customStyles?.[shapeStyleKey], {
-					fill: defaultColor,
-					opacity: 1,
-				});
+				const paint = resolveShapePaint(
+					customStyles?.[shapeStyleKey],
+					{ fill: defaultColor, opacity: 1 },
+					isFilled ? seriesStyles?.[rowKey] : undefined
+				);
 				const opacity =
 					(paint.opacity ?? 1) * (isFilled && siblingMarkOpacity ? siblingMarkOpacity(rowKey) : 1);
 				const { x, y } = position(cell.col, cell.row);
@@ -84,7 +88,9 @@ const WaffleMarks = ({
 				const sharedHandlers = {
 					className: cellShape === 'circle' ? 'visx-circle' : 'visx-bar',
 					style: editorPointerStyle,
-					fill: paint.fill,
+					fill: isFilled ? resolvePatternFill(paint, rowKey) : paint.fill,
+					stroke: paint.stroke,
+					strokeWidth: paint.strokeWidth,
 					opacity,
 					onMouseLeave: tooltipActive ? onCellMouseLeave : undefined,
 					onMouseMove: tooltipActive

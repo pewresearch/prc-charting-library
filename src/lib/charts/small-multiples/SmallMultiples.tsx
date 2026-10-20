@@ -56,6 +56,7 @@ import {
 	linearBarBaseline,
 	facetDataByColumn,
 	facetDataByGroup,
+	sortPanelRowsByIndependent,
 	computeSharedDomain,
 	computePanelRects,
 	resolveEffectiveColumns,
@@ -63,16 +64,22 @@ import {
 	computeColumnBarRects,
 	resolveBandDomain,
 	computeHorizontalBarRects,
-	computeBarPanelHeight,
 	resolveSliceDomain,
 	resolveShapePaint,
+	resolvePointPaint,
+	resolvePointSize,
+	resolveLinePathPaint,
+	resolvePatternFill,
 	generateSegmentKey,
 	resolveSegmentPaint,
 	resolveGhostStroke,
+	SMALL_MULTIPLES_SHARED_SERIES_KEY,
 	computeWaffleCells,
 	computeWaffleLayout,
 	resolveWaffleMax,
 	resolveWaffleCellSize,
+	resolveCategoryColor,
+	legendCategoryShapeStyle,
 } from '@prc/charting-utilities';
 import {
 	AnnotationsLayer,
@@ -81,6 +88,7 @@ import {
 	DrawingsLayer,
 	getPositioningScale,
 	PlotBands,
+	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
 } from '../../overlays';
@@ -123,7 +131,6 @@ const DEFAULT_LEFT_INSET = 32;
 /** Extra room for category tick labels on horizontal-bar panels. */
 const DEFAULT_BAR_LEFT_INSET = 72;
 const DEFAULT_BOTTOM_INSET = 20;
-const DEFAULT_BAR_ROW_HEIGHT = 28;
 /** Locked cell height (~legacy 400px / 2 rows + gapY 32). */
 const DEFAULT_PANEL_HEIGHT = 184;
 const PIE_PAD = 8;
@@ -163,6 +170,7 @@ const SmallMultiples = () => {
 		drawings,
 		smallMultiples,
 		waffle: waffleConfig,
+		seriesStyles,
 	} = config;
 
 	const { width, parentClass, overflowX, padding } = layout;
@@ -211,20 +219,6 @@ const SmallMultiples = () => {
 
 	const groupKey =
 		dataRender?.groupBreaksActive && dataRender?.groupBreaksCategory ? dataRender.groupBreaksCategory : null;
-
-	// Normalize both facet modes to panels-with-series.
-	const panels: SmallMultiplesGroupPanel[] = useMemo(() => {
-		const categories = dataRender?.categories?.length ? dataRender.categories : undefined;
-		if (groupKey) {
-			return facetDataByGroup(data, groupKey, categories, dataRender?.groupBreaksCategoryValues);
-		}
-		return facetDataByColumn(data, categories).map((panel) => ({
-			key: panel.key,
-			series: [{ key: panel.key, rows: panel.rows }],
-		}));
-	}, [data, dataRender?.categories, groupKey, dataRender?.groupBreaksCategoryValues]);
-
-	const allSeries = useMemo(() => panels.flatMap((p) => p.series), [panels]);
 
 	const sm = {
 		...{
@@ -280,11 +274,59 @@ const SmallMultiples = () => {
 	const panelOrientation = isBarPanel ? 'horizontal' : 'vertical';
 	const leftInset = isPartToWholePanel ? 0 : isBarPanel ? DEFAULT_BAR_LEFT_INSET : DEFAULT_LEFT_INSET;
 
+	// Continuous time scale (line panels only). Band/pie still use categorical x,
+	// but tooltip headers should format when the author marked x as time data.
+	const isTimeScale = !isBandPanel && !isPartToWholePanel && independentAxis?.scale === 'time';
+	const isTimeData = independentAxis?.scale === 'time' || dataRender?.xScale === 'time';
+	const xKey = dataRender?.x || 'x';
+
+	const getXDate = useMemo(
+		() => (d: FlatData) => newDateByFormat(d[xKey], dataRender?.xFormat) as Date,
+		[xKey, dataRender?.xFormat]
+	);
+	const getXNumber = useMemo(() => (d: FlatData) => Number(d[xKey]), [xKey]);
+
+	// Normalize both facet modes to panels-with-series.
+	const panels: SmallMultiplesGroupPanel[] = useMemo(() => {
+		const categories = dataRender?.categories?.length ? dataRender.categories : undefined;
+		const faceted = groupKey
+			? facetDataByGroup(data, groupKey, categories, dataRender?.groupBreaksCategoryValues)
+			: facetDataByColumn(data, categories).map((panel) => ({
+					key: panel.key,
+					series: [{ key: panel.key, rows: panel.rows }],
+				}));
+		if (isBandPanel || isPartToWholePanel) {
+			return faceted;
+		}
+		// Line/area panels read position from the array: the path draws row to
+		// row and first/last label rules use the index. Line sorts its rows
+		// before plotting; faceted rows keep author order until we do the same.
+		return sortPanelRowsByIndependent(faceted, (row) => (isTimeScale ? getXDate(row).getTime() : getXNumber(row)));
+	}, [
+		data,
+		dataRender?.categories,
+		groupKey,
+		dataRender?.groupBreaksCategoryValues,
+		isBandPanel,
+		isPartToWholePanel,
+		isTimeScale,
+		getXDate,
+		getXNumber,
+	]);
+
+	const allSeries = useMemo(() => panels.flatMap((p) => p.series), [panels]);
+
 	const bandDomain = useMemo(() => (isBandPanel ? resolveBandDomain(allSeries) : []), [isBandPanel, allSeries]);
 
+	// Pie slices key by row label; each waffle panel is one series keyed by panel name.
 	const sliceDomain = useMemo(() => {
-		if (isPiePanel || isWafflePanel) {
+		if (isPiePanel) {
 			return resolveSliceDomain(panels, legend?.categories);
+		}
+		if (isWafflePanel) {
+			const panelKeys = panels.map((panel) => String(panel.key));
+			const ordered = (legend?.categories ?? []).map(String).filter((key) => panelKeys.includes(key));
+			return [...ordered, ...panelKeys.filter((key) => !ordered.includes(key))];
 		}
 		return [];
 	}, [isWafflePanel, isPiePanel, panels, legend?.categories]);
@@ -298,20 +340,10 @@ const SmallMultiples = () => {
 		[sliceDomain, colors]
 	);
 
-	const legendProps = useMemo(() => (legend ? getLegendProps(legend) : null), [legend]);
+	const legendProps = useMemo(() => getLegendProps(legend), [legend]);
 
-	const configuredPanelHeight =
+	const panelHeight =
 		typeof sm.panelHeight === 'number' && sm.panelHeight > 0 ? sm.panelHeight : DEFAULT_PANEL_HEIGHT;
-
-	// Horizontal bars grow with category count so each row stays readable.
-	const panelHeight = isBarPanel
-		? computeBarPanelHeight({
-				bandCount: bandDomain.length,
-				rowHeight: DEFAULT_BAR_ROW_HEIGHT,
-				titlePad,
-				bottomInset: dependentAxis?.active ? DEFAULT_BOTTOM_INSET : 0,
-			})
-		: configuredPanelHeight;
 
 	const minPanelWidth =
 		typeof sm.minPanelWidth === 'number' && sm.minPanelWidth > 0 ? sm.minPanelWidth : MIN_PANEL_WIDTH;
@@ -403,18 +435,6 @@ const SmallMultiples = () => {
 		return null;
 	}, [allSeries, sm.sharedScale, dependentAxis?.showZero, dependentAxis?.domain]);
 
-	// Continuous time scale (line panels only). Band/pie still use categorical x,
-	// but tooltip headers should format when the author marked x as time data.
-	const isTimeScale = !isBandPanel && !isPartToWholePanel && independentAxis?.scale === 'time';
-	const isTimeData = independentAxis?.scale === 'time' || dataRender?.xScale === 'time';
-	const xKey = dataRender?.x || 'x';
-
-	const getXDate = useMemo(
-		() => (d: FlatData) => newDateByFormat(d[xKey], dataRender?.xFormat) as Date,
-		[xKey, dataRender?.xFormat]
-	);
-	const getXNumber = useMemo(() => (d: FlatData) => Number(d[xKey]), [xKey]);
-
 	const xDomain = useMemo(() => {
 		if (isColumnPanel) {
 			return bandDomain;
@@ -454,7 +474,49 @@ const SmallMultiples = () => {
 		dataRender?.xFormat,
 	]);
 
-	const getSeriesColor = (seriesIndex: number) => colors?.[seriesIndex] || DEFAULT_SERIES_COLOR;
+	const seriesColorScale = useMemo(
+		() =>
+			scaleOrdinal<string, string>({
+				// The grouping column names the panels; it takes no palette slot.
+				domain: (dataRender?.categories ?? []).map(String).filter((category) => category !== groupKey),
+				range: colors?.length ? colors : [DEFAULT_SERIES_COLOR],
+			}),
+		[dataRender?.categories, colors, groupKey]
+	);
+	// Column-facet panels share one style row; group facets key by series.
+	// In panel mode a panel row layers over the shared row.
+	const getPanelRow = (panelKey: string, seriesKey: string) =>
+		sm.colorMode === 'panel' ? sm.panelStyles?.[panelKey]?.[seriesKey] : undefined;
+	const getStyleKey = (seriesKey: string) => (groupKey ? seriesKey : SMALL_MULTIPLES_SHARED_SERIES_KEY);
+	const getSharedColor = (seriesKey: string) =>
+		groupKey ? seriesColorScale(seriesKey) : colors?.[0] || DEFAULT_SERIES_COLOR;
+	const getSeriesColor = (panelKey: string, seriesKey: string) =>
+		getPanelRow(panelKey, seriesKey)?.fill ?? getSharedColor(seriesKey);
+	const getSeriesStyle = (panelKey: string, seriesKey: string) => {
+		const shared = seriesStyles?.[getStyleKey(seriesKey)];
+		const panelRow = getPanelRow(panelKey, seriesKey);
+		if (!panelRow) {
+			return shared;
+		}
+		return { ...shared, ...panelRow, label: { ...shared?.label, ...panelRow.label } };
+	};
+	// A panel row needs its own hatch def so the hatch takes the panel fill.
+	const getPatternKey = (panelKey: string, seriesKey: string) =>
+		getPanelRow(panelKey, seriesKey) ? `panel ${panelKey} ${seriesKey}` : getStyleKey(seriesKey);
+	const panelPatternStyles =
+		sm.colorMode === 'panel'
+			? Object.fromEntries(
+					Object.entries(sm.panelStyles ?? {}).flatMap(([panelKey, rows]) =>
+						Object.keys(rows ?? {}).map((seriesKey) => [
+							getPatternKey(panelKey, seriesKey),
+							{
+								...getSeriesStyle(panelKey, seriesKey),
+								fill: getSeriesColor(panelKey, seriesKey),
+							},
+						])
+					)
+				)
+			: {};
 	const strokeWidth = line?.strokeWidth ?? 2;
 	const strokeDasharray = line?.strokeDasharray || undefined;
 	const showPoints = !!line?.showPoints;
@@ -463,6 +525,13 @@ const SmallMultiples = () => {
 	const areaFillOpacity = line?.areaFillOpacity ?? 0.4;
 	const pointSize = nodes?.pointSize ?? DEFAULT_POINT_SIZE;
 	const pointStrokeWidth = nodes?.pointStrokeWidth ?? 1;
+	const pointNodes = {
+		...nodes,
+		pointFill: nodes?.pointFill ?? 'white',
+		pointStroke: nodes?.pointStroke ?? 'inherit',
+		pointStrokeWidth,
+		pointSize,
+	};
 	const interpolationKey = (line?.interpolation || 'curveLinear') as keyof CurveType;
 	// Visx curve factories vary by type; cast matches Line.tsx usage for AreaClosed/LinePath.
 	const lineCurve = (Curve[interpolationKey] ?? Curve.curveLinear) as typeof Curve.curveLinear;
@@ -479,18 +548,17 @@ const SmallMultiples = () => {
 		ghostOpacity: sm.ghost.opacity,
 	});
 	const panelTitleCustomizations = sm.customTitles;
-	const showSharedLegend = isPartToWholePanel && !!legend?.active && !!legendProps && sliceDomain.length > 0;
+	const legendColorScale = isPartToWholePanel ? sliceColorScale : seriesColorScale;
 	const isSegmentMode =
 		isLinePanel && (shapes?.segmentsActive === true || Object.keys(shapes?.segmentStyles ?? {}).length > 0);
 	const labelsActive = !!labels?.active;
 	const tooltipActive = !!tooltip?.active;
 
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
-	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	// Panels repeat the same tick values, so each axis carries its panel key and
+	// a tick edit is saved against that panel alone.
+	const makeTicksComponent = (axisKey: AxisKey, panelKey: string) => (props: any) => (
+		<ClickableTicks {...props} axisKey={axisKey} panelKey={panelKey} onTickClick={onTickClick} />
 	);
 	// Only force pointer styling in the editor; leave frontend hit-testing alone
 	// so hover/tooltip wiring can land without fighting pointer-events: none.
@@ -552,6 +620,11 @@ const SmallMultiples = () => {
 						scheduleHideTooltip();
 					}}
 				>
+					<SeriesPatternDefs
+						seriesStyles={seriesStyles}
+						resolveFill={isPartToWholePanel ? sliceColorScale : getSharedColor}
+					/>
+					<SeriesPatternDefs seriesStyles={panelPatternStyles} />
 					<LeaderLineProvider>
 						<Group left={padLeft} top={padTop}>
 							{(showLeaderLines || (labelsActive && !!wpEditorFunctions?.labels)) && (
@@ -633,17 +706,20 @@ const SmallMultiples = () => {
 										: continuousXScale;
 								const leftAxisKey: AxisKey = isBarPanel ? 'independent' : 'dependent';
 								const bottomAxisKey: AxisKey = isBarPanel ? 'dependent' : 'independent';
-								const leftTicksComponent =
-									leftAxisKey === 'independent' ? independentTicksComponent : dependentTicksComponent;
-								const bottomTicksComponent =
-									bottomAxisKey === 'independent'
-										? independentTicksComponent
-										: dependentTicksComponent;
+								const panelTickKey = String(panel.key);
+								const leftTicksComponent = makeTicksComponent(leftAxisKey, panelTickKey);
+								const bottomTicksComponent = makeTicksComponent(bottomAxisKey, panelTickKey);
 
 								const leftAxisProps =
 									!isPartToWholePanel &&
 									leftAxisConfig &&
-									getAxisProps(leftAxisConfig, leftScale, dataRender?.xFormat, leftTicksComponent);
+									getAxisProps(
+										leftAxisConfig,
+										leftScale,
+										dataRender?.xFormat,
+										leftTicksComponent,
+										panelTickKey
+									);
 								const bottomAxisProps =
 									!isPartToWholePanel &&
 									bottomAxisConfig &&
@@ -651,7 +727,8 @@ const SmallMultiples = () => {
 										bottomAxisConfig,
 										bottomScale,
 										dataRender?.xFormat,
-										bottomTicksComponent
+										bottomTicksComponent,
+										panelTickKey
 									);
 
 								const panelGroupValue = groupKey ? panel.key : null;
@@ -689,13 +766,13 @@ const SmallMultiples = () => {
 								const pieRadius = Math.max(0, Math.min(plotWidth, plotHeight) / 2 - PIE_PAD);
 
 								const lineVoronoiSites = isLinePanel
-									? panel.series.flatMap((series, seriesIndex) =>
+									? panel.series.flatMap((series) =>
 											series.rows.map((row) => {
 												const { body, header } = getCustomTooltip(row, series.key);
 												return {
 													...row,
 													category: series.key,
-													color: getSeriesColor(seriesIndex),
+													color: getSeriesColor(panel.key, series.key),
 													customTooltip: body,
 													customHeader: header,
 												};
@@ -868,6 +945,8 @@ const SmallMultiples = () => {
 											y={anchorY}
 											dataPoint={row}
 											category={series.key}
+											seriesKey={getStyleKey(series.key)}
+											seriesStyle={getSeriesStyle(panel.key, series.key)}
 											defaultDx={dx}
 											defaultDy={dy}
 											chartInnerWidth={plotWidth}
@@ -875,12 +954,13 @@ const SmallMultiples = () => {
 											defaultLabel={defaultLabel}
 											fill={getLabelFill({
 												labelColor: labels.color,
-												seriesColor: getSeriesColor(seriesIndex),
+												seriesColor: getSeriesColor(panel.key, series.key),
 											})}
 											leaderLine={
 												showLeaderLines ? { enabled: true, anchorRadius: pointSize } : undefined
 											}
 											{...labelProps}
+											groupValue={panelGroupValue}
 											textAnchor={placement.textAnchor}
 										>
 											{labelContent}
@@ -906,37 +986,6 @@ const SmallMultiples = () => {
 										data-panel-col={rect.col}
 										data-panel-row={rect.row}
 									>
-										{sm.panelTitle.active && (
-											<PanelTitleLabel
-												panelKey={panel.key}
-												defaultLabel={panel.key}
-												positioningScale={{
-													...getPositioningScale({
-														context: 'panel',
-														panelKey: panel.key,
-														layout,
-														chartWidth: chartWidth || width,
-														chartHeight,
-														panels,
-														panelRects: rects,
-														designPanelRects,
-														gridOffset: { x: padLeft, y: padTop },
-														titlePad,
-														leftInset,
-														bottomInset: panelBottomInset,
-													}),
-													// Already inside the panel Group — offsets are cell-local.
-													originX: 0,
-													originY: 0,
-												}}
-												fontSize={sm.panelTitle.fontSize}
-												fontWeight={sm.panelTitle.fontWeight}
-												fontFamily={sm.panelTitle.fontFamily}
-												fill={sm.panelTitle.fill}
-												textAlign={sm.panelTitle.textAlign}
-												customization={panelTitleCustomizations?.[panel.key]}
-											/>
-										)}
 										<defs>
 											<clipPath id={plotClipId}>
 												<rect
@@ -1026,8 +1075,18 @@ const SmallMultiples = () => {
 														));
 													})}
 												{isLinePanel &&
-													panel.series.map((series, seriesIndex) => {
-														const seriesColor = getSeriesColor(seriesIndex);
+													panel.series.map((series) => {
+														const seriesColor = getSeriesColor(panel.key, series.key);
+														const linePaint = resolveLinePathPaint(
+															{
+																strokeWidth: ghostsActive
+																	? strokeWidth + 1
+																	: strokeWidth,
+																strokeDasharray,
+															},
+															seriesColor,
+															getSeriesStyle(panel.key, series.key)
+														);
 														const linePoints = series.rows.map((row) => ({
 															x: getX(row),
 															y: getY(row),
@@ -1062,29 +1121,23 @@ const SmallMultiples = () => {
 																series.key,
 																panelGroupValue
 															);
-															const defaultFill =
-																nodes?.pointFill === 'inherit'
-																	? seriesColor
-																	: (nodes?.pointFill ?? 'white');
-															const defaultStroke =
-																nodes?.pointStroke === 'inherit'
-																	? seriesColor
-																	: (nodes?.pointStroke ?? seriesColor);
-															const paint = resolveShapePaint(
-																shapes?.customStyles?.[shapeKey],
-																{
-																	fill: defaultFill,
-																	stroke: defaultStroke,
-																	strokeWidth: pointStrokeWidth,
-																	opacity: 1,
-																}
+															const paint = resolvePointPaint(
+																pointNodes,
+																seriesColor,
+																getSeriesStyle(panel.key, series.key),
+																shapes?.customStyles?.[shapeKey]
 															);
+															const defaultFill = paint.fill;
 															return (
 																<AnimatedCircle
 																	key={`pt-${panel.key}-${series.key}-${pointIndex}`}
 																	cx={cx}
 																	cy={cy}
-																	r={pointSize}
+																	r={resolvePointSize(
+																		pointNodes,
+																		getSeriesStyle(panel.key, series.key),
+																		shapes?.customStyles?.[shapeKey]
+																	)}
 																	entranceDelay={entranceDelay}
 																	entranceDuration={entranceDuration}
 																	fill={showPoints ? paint.fill : 'transparent'}
@@ -1092,7 +1145,7 @@ const SmallMultiples = () => {
 																	strokeWidth={showPoints ? paint.strokeWidth : 0}
 																	fillOpacity={
 																		showPoints
-																			? (nodes?.pointFillOpacity ?? 1) *
+																			? (paint.fillOpacity ?? 1) *
 																				siblingMarkOpacity(series.key)
 																			: 1
 																	}
@@ -1144,12 +1197,8 @@ const SmallMultiples = () => {
 																				const paint = resolveSegmentPaint(
 																					shapes?.segmentStyles?.[segmentKey],
 																					{
-																						stroke: seriesColor,
-																						strokeWidth: ghostsActive
-																							? strokeWidth + 1
-																							: strokeWidth,
-																						opacity: 1,
-																						strokeDasharray,
+																						...linePaint,
+																						opacity: linePaint.opacity ?? 1,
 																					}
 																				);
 																				const x1 = getX(startPoint);
@@ -1240,16 +1289,13 @@ const SmallMultiples = () => {
 																		<AnimatedLinePath
 																			points={linePoints}
 																			curve={lineCurve}
-																			stroke={seriesColor}
-																			strokeWidth={
-																				ghostsActive
-																					? strokeWidth + 1
-																					: strokeWidth
+																			stroke={linePaint.stroke}
+																			strokeWidth={linePaint.strokeWidth}
+																			strokeOpacity={
+																				(linePaint.opacity ?? 1) *
+																				siblingMarkOpacity(series.key)
 																			}
-																			strokeOpacity={siblingMarkOpacity(
-																				series.key
-																			)}
-																			strokeDasharray={strokeDasharray}
+																			strokeDasharray={linePaint.strokeDasharray}
 																			style={editorPointerStyle(
 																				!!wpEditorFunctions?.line
 																			)}
@@ -1296,7 +1342,7 @@ const SmallMultiples = () => {
 													})}
 												{isColumnPanel &&
 													panel.series.map((series, seriesIndex) => {
-														const seriesColor = getSeriesColor(seriesIndex);
+														const seriesColor = getSeriesColor(panel.key, series.key);
 														const seriesBars = computeColumnBarRects({
 															rows: series.rows,
 															bandDomain,
@@ -1325,7 +1371,12 @@ const SmallMultiples = () => {
 																	stroke: barStroke,
 																	strokeWidth: barStrokeWidth,
 																	opacity: 1,
-																}
+																},
+																getSeriesStyle(panel.key, series.key)
+															);
+															const barFill = resolvePatternFill(
+																paint,
+																getPatternKey(panel.key, series.key)
 															);
 															const { body: customTooltip, header: customHeader } =
 																getCustomTooltip(dataPoint, series.key);
@@ -1351,7 +1402,7 @@ const SmallMultiples = () => {
 																		y={barGeom.y}
 																		width={barGeom.width}
 																		height={barGeom.height}
-																		fill={paint.fill}
+																		fill={barFill}
 																		stroke={paint.stroke}
 																		strokeWidth={paint.strokeWidth}
 																		opacity={
@@ -1413,6 +1464,11 @@ const SmallMultiples = () => {
 																			)}
 																			dataPoint={dataPoint}
 																			category={series.key}
+																			seriesKey={getStyleKey(series.key)}
+																			seriesStyle={getSeriesStyle(
+																				panel.key,
+																				series.key
+																			)}
 																			defaultDx={0}
 																			defaultDy={0}
 																			chartInnerWidth={plotWidth}
@@ -1426,6 +1482,7 @@ const SmallMultiples = () => {
 																				seriesColor
 																			)}
 																			{...labelProps}
+																			groupValue={panelGroupValue}
 																		>
 																			{customLabel}
 																		</AnimatedBarLabel>
@@ -1436,7 +1493,7 @@ const SmallMultiples = () => {
 													})}
 												{isBarPanel &&
 													panel.series.map((series, seriesIndex) => {
-														const seriesColor = getSeriesColor(seriesIndex);
+														const seriesColor = getSeriesColor(panel.key, series.key);
 														const seriesBars = computeHorizontalBarRects({
 															rows: series.rows,
 															bandDomain,
@@ -1465,7 +1522,12 @@ const SmallMultiples = () => {
 																	stroke: barStroke,
 																	strokeWidth: barStrokeWidth,
 																	opacity: 1,
-																}
+																},
+																getSeriesStyle(panel.key, series.key)
+															);
+															const barFill = resolvePatternFill(
+																paint,
+																getPatternKey(panel.key, series.key)
 															);
 															const { body: customTooltip, header: customHeader } =
 																getCustomTooltip(dataPoint, series.key);
@@ -1491,7 +1553,7 @@ const SmallMultiples = () => {
 																		y={barGeom.y}
 																		width={barGeom.width}
 																		height={barGeom.height}
-																		fill={paint.fill}
+																		fill={barFill}
 																		stroke={paint.stroke}
 																		strokeWidth={paint.strokeWidth}
 																		opacity={
@@ -1553,6 +1615,11 @@ const SmallMultiples = () => {
 																			)}
 																			dataPoint={dataPoint}
 																			category={series.key}
+																			seriesKey={getStyleKey(series.key)}
+																			seriesStyle={getSeriesStyle(
+																				panel.key,
+																				series.key
+																			)}
 																			defaultDx={0}
 																			defaultDy={0}
 																			chartInnerWidth={plotWidth}
@@ -1566,6 +1633,7 @@ const SmallMultiples = () => {
 																				seriesColor
 																			)}
 																			{...labelProps}
+																			groupValue={panelGroupValue}
 																		>
 																			{customLabel}
 																		</AnimatedBarLabel>
@@ -1605,7 +1673,8 @@ const SmallMultiples = () => {
 																					? (pieConfig.pathStrokeWidth ?? 1)
 																					: 0,
 																				opacity: 1,
-																			}
+																			},
+																			seriesStyles?.[sliceKey]
 																		);
 																		const [centroidX, centroidY] =
 																			pie.path.centroid(arc);
@@ -1639,7 +1708,10 @@ const SmallMultiples = () => {
 																							endAngle: e,
 																						}) || ''
 																					}
-																					fill={paint.fill}
+																					fill={resolvePatternFill(
+																						paint,
+																						sliceKey
+																					)}
 																					stroke={paint.stroke}
 																					strokeWidth={paint.strokeWidth}
 																					opacity={
@@ -1700,6 +1772,7 @@ const SmallMultiples = () => {
 																						y={centroidY}
 																						dataPoint={arc.data}
 																						category={pieCategory}
+																						seriesKey={sliceKey}
 																						defaultDx={0}
 																						defaultDy={0}
 																						chartInnerWidth={plotWidth}
@@ -1710,6 +1783,7 @@ const SmallMultiples = () => {
 																							seriesColor: sliceColor,
 																						})}
 																						{...labelProps}
+																						groupValue={panelGroupValue}
 																					>
 																						{customLabel}
 																					</AnimatedLabel>
@@ -1798,6 +1872,7 @@ const SmallMultiples = () => {
 																	dataByCategory={dataByCategory}
 																	dataRender={dataRender}
 																	customStyles={shapes?.customStyles}
+																	seriesStyles={seriesStyles}
 																	wpEditorFunctions={wpEditorFunctions}
 																	tooltipActive={tooltipActive}
 																	onCellMouseMove={(event, row) => {
@@ -1856,6 +1931,38 @@ const SmallMultiples = () => {
 													)
 												)}
 											</Group>
+										)}
+										{/* Last in the panel so a title dragged onto the plot stays above the line tooltip hit rect. */}
+										{sm.panelTitle.active && (
+											<PanelTitleLabel
+												panelKey={panel.key}
+												defaultLabel={panel.key}
+												positioningScale={{
+													...getPositioningScale({
+														context: 'panel',
+														panelKey: panel.key,
+														layout,
+														chartWidth: chartWidth || width,
+														chartHeight,
+														panels,
+														panelRects: rects,
+														designPanelRects,
+														gridOffset: { x: padLeft, y: padTop },
+														titlePad,
+														leftInset,
+														bottomInset: panelBottomInset,
+													}),
+													// Already inside the panel Group — offsets are cell-local.
+													originX: 0,
+													originY: 0,
+												}}
+												fontSize={sm.panelTitle.fontSize}
+												fontWeight={sm.panelTitle.fontWeight}
+												fontFamily={sm.panelTitle.fontFamily}
+												fill={sm.panelTitle.fill}
+												textAlign={sm.panelTitle.textAlign}
+												customization={panelTitleCustomizations?.[panel.key]}
+											/>
 										)}
 									</Group>
 								);
@@ -1921,23 +2028,29 @@ const SmallMultiples = () => {
 						/>
 					)}
 				</svg>
-				{showSharedLegend && (
+				{legend.active && (
 					<StyledLegend legend={legend} layoutWidth={width} chartWidth={chartWidth || width}>
 						<LegendOrdinal
 							{...legendProps}
-							scale={sliceColorScale}
-							domain={
-								legend.categories?.length
-									? legend.categories.map(String).filter((k) => sliceDomain.includes(k))
-									: sliceDomain
-							}
+							scale={legendColorScale}
+							domain={legend.categories.length > 0 ? legend.categories : legendColorScale.domain()}
 						>
 							{(legendLabels) => (
 								<ClickableLegend
 									labels={legendLabels}
 									shape={legend.markerStyle}
-									fill={(label) => sliceColorScale(String(label.datum))}
-									shapeStyle={legendProps.shapeStyle}
+									fill={(label) =>
+										resolveCategoryColor({
+											category: label.datum,
+											fallback: isPartToWholePanel
+												? sliceColorScale(String(label.datum))
+												: getSharedColor(String(label.datum)),
+											dataRender,
+										})
+									}
+									shapeStyle={(label) =>
+										legendCategoryShapeStyle(label, dataRender, legendProps.shapeStyle)
+									}
 									direction={legend.orientation}
 									legendLabelProps={legendProps.legendLabelProps}
 								/>

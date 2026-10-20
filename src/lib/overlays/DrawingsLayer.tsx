@@ -16,7 +16,6 @@ import type {
 	CircleDrawing,
 	RectDrawing,
 	PathDrawing,
-	Breakpoint,
 	PanelLike,
 	PanelRect,
 } from '@prc/charting-utilities';
@@ -491,7 +490,6 @@ const InteractiveDrawing = ({
  */
 export const DrawingsLayer = ({
 	config,
-	width,
 	height,
 	layout,
 	chartWidth,

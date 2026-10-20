@@ -17,9 +17,118 @@
  *   static circles they replaced.
  */
 import { EventType } from '@visx/event/lib/types';
-import { FeatureShape, getCustomTooltip, getLocalPoint } from '@prc/charting-utilities';
+import {
+	CategoryStyle,
+	FeatureShape,
+	getCustomTooltip,
+	getGroupColorDomain,
+	getLocalPoint,
+	resolvePaint,
+	resolvePatternFill,
+} from '@prc/charting-utilities';
 import { AnimatedCircle } from '../../animation';
 import { getDisplayCentroid } from './getDisplayCentroid';
+
+// ── Paint ─────────────────────────────────────────────────────────────────────
+
+export interface BubbleGroups {
+	/** Group column, or undefined when bubbles are one series. */
+	groupBy?: string;
+	/** Series key for every bubble when ungrouped: the mapped category. */
+	seriesKey?: string;
+	/** Palette slot fill for a group, in color sorter order. */
+	groupFill: (group: string) => string;
+}
+
+/**
+ * Bubble groups mirror the color sorter: one slot per group value, in
+ * `groupBreaksCategoryValues` order, so `colors[i]` is group i. Without a
+ * group column, every bubble is one series keyed by the mapped category.
+ *
+ * @param root0
+ * @param root0.groupBy    Group column; empty means one series.
+ * @param root0.category   Mapped value category.
+ * @param root0.groupOrder Saved group order.
+ * @param root0.data       Map rows.
+ * @param root0.colors     Compiled palette.
+ */
+export function getBubbleGroups({
+	groupBy,
+	category,
+	groupOrder,
+	data,
+	colors,
+}: {
+	groupBy?: string;
+	category?: string;
+	groupOrder?: Array<string | number> | null;
+	data: Record<string, unknown>[];
+	colors: string[];
+}): BubbleGroups {
+	if (!groupBy) {
+		return { groupBy: undefined, seriesKey: category, groupFill: () => colors[0] };
+	}
+	const domain = getGroupColorDomain(data as any, groupBy, { groupOrder });
+	return {
+		groupBy,
+		groupFill: (group) => {
+			const index = domain.indexOf(group);
+			return colors[(index < 0 ? 0 : index) % colors.length];
+		},
+	};
+}
+
+/**
+ * A feature's series key: its group value, or the mapped category when
+ * bubbles are one series.
+ *
+ * @param groups     Bubble groups from `getBubbleGroups`.
+ * @param properties Feature properties.
+ */
+export function getBubbleGroup(
+	groups: BubbleGroups | undefined,
+	properties: Record<string, unknown> | undefined
+): string | undefined {
+	return groups?.groupBy ? String(properties?.[groups.groupBy] ?? '') : groups?.seriesKey;
+}
+
+/**
+ * Bubble paint: `map.bubble` is the chart default; a group's series style
+ * lays over it. Series opacity is the bubble's fill opacity.
+ *
+ * @param root0
+ * @param root0.fill         Palette fill for this bubble.
+ * @param root0.bubbleConfig `map.bubble` settings.
+ * @param root0.group        Group value, when grouped.
+ * @param root0.seriesStyle  `seriesStyles[group]`.
+ */
+export function resolveBubblePaint({
+	fill,
+	bubbleConfig,
+	group,
+	seriesStyle,
+}: {
+	fill: string;
+	bubbleConfig: BubbleConfig;
+	group?: string;
+	seriesStyle?: CategoryStyle | null;
+}) {
+	const paint = resolvePaint({
+		defaults: {
+			fill,
+			opacity: bubbleConfig.opacity ?? 0.7,
+			stroke: bubbleConfig.stroke ?? '#ffffff',
+			strokeWidth: bubbleConfig.strokeWidth ?? 1,
+		},
+		series: group ? seriesStyle : undefined,
+	});
+	return {
+		fill: (group ? resolvePatternFill(paint, group) : paint.fill) ?? fill,
+		fillOpacity: paint.opacity,
+		stroke: paint.stroke,
+		strokeWidth: paint.strokeWidth,
+	};
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +158,10 @@ export interface MapBubbleLayerProps {
 	bubbleRadiusScale: (value: number) => number;
 	/** Fill colour applied to every bubble (typically colors[0]). */
 	fill: string;
+	/** Group column and per-group fill; omit for one series. */
+	groups?: BubbleGroups;
+	/** Named series styles, keyed by group value. */
+	seriesStyles?: Record<string, CategoryStyle | undefined> | null;
 	/** Bubble appearance config from map.bubble in the chart config. */
 	bubbleConfig?: BubbleConfig;
 	/** SVG ref used to convert mouse events to local coordinates. */
@@ -84,6 +197,8 @@ const MapBubbleLayer = ({
 	category,
 	bubbleRadiusScale,
 	fill,
+	groups,
+	seriesStyles,
 	bubbleConfig = {},
 	svgRef,
 	showTooltip,
@@ -93,8 +208,6 @@ const MapBubbleLayer = ({
 	getOffsetKey,
 	getName,
 }: MapBubbleLayerProps) => {
-	const { opacity = 0.7, stroke = '#ffffff', strokeWidth = 1 } = bubbleConfig;
-
 	const bubbles = features
 		.map(({ feature, projection }) => {
 			const { id, properties } = feature;
@@ -130,6 +243,14 @@ const MapBubbleLayer = ({
 			{bubbles.map((item) => {
 				const { id, properties, coords, val, name } = item as any;
 				const r = bubbleRadiusScale(Math.abs(val));
+				const group = getBubbleGroup(groups, properties);
+				const groupFill = group ? groups!.groupFill(group) : fill;
+				const paint = resolveBubblePaint({
+					fill: groupFill,
+					bubbleConfig,
+					group,
+					seriesStyle: group ? seriesStyles?.[group] : undefined,
+				});
 
 				const handleMouseMove = (event: EventType) => {
 					if (tooltipTimeoutRef.current) clearTimeout(tooltipTimeoutRef.current);
@@ -142,7 +263,7 @@ const MapBubbleLayer = ({
 							id,
 							y: val,
 							category,
-							fill,
+							fill: groupFill,
 							customTooltip: _tip,
 							customHeader: _hdr,
 						},
@@ -167,7 +288,7 @@ const MapBubbleLayer = ({
 							id,
 							y: val,
 							category,
-							fill,
+							fill: groupFill,
 							customTooltip: _tip,
 							customHeader: _hdr,
 						},
@@ -189,10 +310,10 @@ const MapBubbleLayer = ({
 						cx={coords[0]}
 						cy={coords[1]}
 						r={r}
-						fill={fill}
-						fillOpacity={opacity}
-						stroke={stroke}
-						strokeWidth={strokeWidth}
+						fill={paint.fill}
+						fillOpacity={paint.fillOpacity}
+						stroke={paint.stroke}
+						strokeWidth={paint.strokeWidth}
 						role="img"
 						aria-label={`${name}: ${val}`}
 						tabIndex={0}

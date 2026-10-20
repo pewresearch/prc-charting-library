@@ -1,6 +1,6 @@
 # `primitives/`
 
-**What lives here:** Low-level SVG/React building blocks — currently `SvgText` (styled SVG `<text>` primitive). Kinds: component, types.
+**What lives here:** Low-level SVG/React building blocks — `SvgText` (styled SVG `<text>` primitive) and `PatternDef` (visx hatch for `url(#id)` fills). Kinds: component, types.
 
 **Layer + dependency rule:** Layer 0 (lowest). May import `@prc/charting-utilities`. Must **not** import `store/`, `animation/`, `labels/`, `overlays/`, `charts/`, or `controller/`.
 

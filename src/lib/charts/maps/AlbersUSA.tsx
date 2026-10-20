@@ -5,11 +5,17 @@ import { CSSProperties, Fragment, RefObject, useContext, useMemo, useRef } from 
 import { EventType } from '@visx/event/lib/types';
 import { AlbersUsa } from '@visx/geo';
 import { Group } from '@visx/group';
-import { LegendLinear, LegendOrdinal, LegendThreshold } from '@visx/legend';
-import { scaleLinear, scaleOrdinal, scaleSqrt, scaleThreshold } from '@visx/scale';
+import { scaleSqrt } from '@visx/scale';
 import { useTooltip } from '@visx/tooltip';
 import { geoCentroid } from '@visx/vendor/d3-geo';
-import { AnnotationsLayer, ClickableLegend, DrawingsLayer, StyledLegend, StyledTooltip } from '../../overlays';
+import {
+	AnnotationsLayer,
+	ClickableLegend,
+	DrawingsLayer,
+	SeriesPatternDefs,
+	StyledLegend,
+	StyledTooltip,
+} from '../../overlays';
 import { DraggableLabel } from '../../labels';
 
 // TYPES & UTILITIES
@@ -35,11 +41,12 @@ import {
 	useSize,
 	useStateData,
 	fipsToStateAbbr,
+	createValueColorScale,
 } from '@prc/charting-utilities';
 
 import * as topojson from 'topojson-client';
 // INTERNAL
-import MapBubbleLayer from './MapBubbleLayer';
+import MapBubbleLayer, { getBubbleGroup, getBubbleGroups } from './MapBubbleLayer';
 import MapBubbleLegend from './MapBubbleLegend';
 
 // STYLED COMPONENTS
@@ -111,9 +118,10 @@ const AlbersUSA = () => {
 		() => topojson.feature(topology.default as any, topology.default.objects.states as any),
 		[topology]
 	);
-	const { layout, colors, dataRender, labels, legend, tooltip, map, shapes, annotations, drawings } = config;
+	const { layout, colors, dataRender, labels, legend, tooltip, map, shapes, annotations, drawings, seriesStyles } =
+		config;
 	// SIZE AND LAYOUT
-	const {parentClass, width, height } = layout;
+	const { parentClass, width, height } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
 	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
 
@@ -141,36 +149,15 @@ const AlbersUSA = () => {
 	const isBubbleMode = dataRender.mapStyle === 'bubble';
 	const category = dataRender.categories[0];
 
-	const thresholdScale = scaleThreshold<number, string>({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors,
+	const valueScale = createValueColorScale({
+		mode: dataRender.mapScale,
+		domain: dataRender.mapScaleDomain,
+		colors,
+		emptyFill: map.pathBackgroundFill,
+		seriesStyles,
+		legend,
+		legendOrder: legend.categories,
 	});
-
-	const ordinalScale = scaleOrdinal({
-		domain: dataRender.mapScaleDomain as string[],
-		range: colors,
-	});
-
-	const linearScale = scaleLinear({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors.map((c: string) => {
-			const m = c.match(/^light-dark\(([^,]+),/);
-			return m ? m[1].trim() : c;
-		}),
-	});
-
-	// eslint-disable-next-line @typescript-eslint/no-shadow
-	const getFill = (id: number | string, data: any, cat: string) => {
-		if (!id) return 'transparent';
-		if (!data?.[cat]) return map.pathBackgroundFill;
-		if (dataRender.mapScale === 'linear') {
-			return linearScale(data?.[cat]);
-		}
-		if (dataRender.mapScale === 'ordinal') {
-			return ordinalScale(data?.[cat]);
-		}
-		return thresholdScale(data?.[cat]);
-	};
 
 	// Bubble radius scale — scaleSqrt so perceived area is proportional to value
 	const maxDataValue = useMemo(() => {
@@ -192,6 +179,25 @@ const AlbersUSA = () => {
 				range: [map.bubble?.minRadius ?? 4, map.bubble?.maxRadius ?? 24],
 			}),
 		[maxDataValue, map.bubble?.minRadius, map.bubble?.maxRadius]
+	);
+
+	const bubbleGroups = useMemo(
+		() =>
+			getBubbleGroups({
+				groupBy: isBubbleMode ? dataRender.groupBreaksCategory : undefined,
+				category,
+				groupOrder: dataRender.groupBreaksCategoryValues,
+				data: flattenedData,
+				colors,
+			}),
+		[
+			isBubbleMode,
+			dataRender.groupBreaksCategory,
+			category,
+			dataRender.groupBreaksCategoryValues,
+			flattenedData,
+			colors,
+		]
 	);
 
 	// Calculate centers for proper centering during resize
@@ -242,6 +248,13 @@ const AlbersUSA = () => {
 				viewBox={`0 0 ${chartWidth} ${chartHeight}`}
 				preserveAspectRatio="xMidYMid meet"
 			>
+				<SeriesPatternDefs
+					seriesStyles={seriesStyles}
+					resolveFill={(name) =>
+						seriesStyles?.[name]?.fill ??
+						(isBubbleMode ? bubbleGroups.groupFill(name) : valueScale.keyFill(name))
+					}
+				/>
 				<Group role="presentation">
 					<AlbersUsa<FeatureShape>
 						data={mergedData}
@@ -259,7 +272,9 @@ const AlbersUSA = () => {
 									coords[0] += coordOffsets[abbr][0];
 									coords[1] += coordOffsets[abbr][1];
 								}
-								const fill = isBubbleMode ? map.pathBackgroundFill : getFill(id, properties, category);
+								const fill = isBubbleMode
+									? map.pathBackgroundFill
+									: valueScale.getFill(properties[category]);
 								const shapeIdentifier = properties.x || abbr;
 								const shapeKey = generateElementKey(shapeIdentifier, category, null);
 								const customShapeStyles = isBubbleMode ? {} : shapes?.customStyles?.[shapeKey] || {};
@@ -322,27 +337,27 @@ const AlbersUSA = () => {
 								const { opacity, stroke, strokeWidth } = isBubbleMode
 									? { opacity: 1, stroke: map.pathStroke, strokeWidth: map.pathStrokeWidth }
 									: getTooltipMapDeemphasisProps(tooltip, map, id, tooltipData as FlatData);
-								const shapeStroke = customShapeStyles.stroke || stroke;
-								const shapeStrokeWidth = customShapeStyles.strokeWidth ?? strokeWidth;
-								const shapeOpacity = customShapeStyles.opacity ?? opacity;
+								const binPaint = isBubbleMode
+									? { fill: shapeFill, stroke, strokeWidth, opacity }
+									: valueScale.getPaint(properties[category], { stroke, strokeWidth, opacity });
+								const shapeStroke = customShapeStyles.stroke || binPaint.stroke;
+								const shapeStrokeWidth = customShapeStyles.strokeWidth ?? binPaint.strokeWidth;
+								const shapeOpacity = customShapeStyles.opacity ?? binPaint.opacity;
 
 								return (
 									<MapFeature
 										key={`map-feature-${i}`}
 										className="map-feature"
 										d={path || ''}
-										fill={shapeFill}
+										fill={customShapeStyles.fill || binPaint.fill}
 										stroke={shapeStroke}
 										opacity={shapeOpacity}
 										strokeWidth={shapeStrokeWidth}
+										strokeOpacity={customShapeStyles.strokeOpacity ?? binPaint.strokeOpacity}
 										tabIndex={isBubbleMode ? -1 : 0}
 										style={{
 											cursor: !isBubbleMode && wpEditorFunctions?.shapes ? 'pointer' : undefined,
-											pointerEvents: isBubbleMode
-												? 'none'
-												: wpEditorFunctions?.shapes
-													? 'all'
-													: undefined,
+											pointerEvents: isBubbleMode ? 'none' : wpEditorFunctions?.shapes && 'all',
 										}}
 										onClick={(event: React.MouseEvent) => {
 											if (!isBubbleMode && wpEditorFunctions?.shapes?.onClick) {
@@ -376,7 +391,13 @@ const AlbersUSA = () => {
 										const defaultLabel = map.abbreviateLabels ? abbr : properties.name;
 										const labelText = customLabel || defaultLabel;
 										const dataPoint = { ...properties, x: properties.x || abbr };
-										const contrastSrc = isBubbleMode ? colors[0] : shapeFill;
+										const bubbleGroup = getBubbleGroup(bubbleGroups, properties);
+										const contrastSrc = isBubbleMode
+											? bubbleGroups.groupFill(bubbleGroup ?? '')
+											: shapeFill;
+										const labelSeriesKey = isBubbleMode
+											? (bubbleGroup ?? '')
+											: String(valueScale.styleKey(properties[category]) ?? '');
 										return (
 											<DraggableLabel
 												key={`map-label-${abbr}`}
@@ -384,6 +405,7 @@ const AlbersUSA = () => {
 												y={coords[1]}
 												dataPoint={dataPoint}
 												category={category}
+												seriesKey={labelSeriesKey}
 												defaultDx={labels.labelPositionDX}
 												defaultDy={labels.labelPositionDY}
 												chartInnerWidth={innerWidth}
@@ -419,6 +441,8 @@ const AlbersUSA = () => {
 											category={category}
 											bubbleRadiusScale={bubbleRadiusScale}
 											fill={colors[0]}
+											groups={bubbleGroups}
+											seriesStyles={seriesStyles}
 											bubbleConfig={map.bubble}
 											svgRef={svgRef}
 											showTooltip={showTooltip}
@@ -462,58 +486,14 @@ const AlbersUSA = () => {
 					chartWidth={chartWidth}
 					chartHeight={chartHeight}
 				>
-					{dataRender.mapScale === 'threshold' && (
-						<LegendThreshold
-							{...legendProps}
-							scale={thresholdScale}
-							labelLower={legend.labelLower}
-							labelUpper={legend.labelUpper}
-							labelDelimiter={legend.labelDelimiter}
-						>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendThreshold>
-					)}
-					{dataRender.mapScale === 'ordinal' && (
-						<LegendOrdinal
-							{...legendProps}
-							scale={ordinalScale}
-							domain={legend.categories.length > 0 ? legend.categories : ordinalScale.domain()}
-						>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => ordinalScale(label.datum)}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendOrdinal>
-					)}
-					{dataRender.mapScale === 'linear' && (
-						<LegendLinear {...legendProps} scale={linearScale}>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendLinear>
-					)}
+					<ClickableLegend
+						labels={valueScale.legendItems}
+						shape={legend.markerStyle}
+						fill={(label) => label.value}
+						shapeStyle={legendProps.shapeStyle}
+						direction={legend.orientation}
+						legendLabelProps={legendProps.legendLabelProps}
+					/>
 				</StyledLegend>
 			)}
 			{legend.active && isBubbleMode && (
@@ -571,12 +551,14 @@ const AlbersUSA = () => {
 						dangerouslySetInnerHTML={{
 							__html: tooltipData.customTooltip
 								? tooltipData.customTooltip
-								: getTooltipFormat({
+								: getTooltipFormat(
+										{
 											x: tooltipData.x,
 											y: tooltipData.y,
 											category: tooltipData.key,
 											color: tooltipData.fill,
-										data: tooltipData,},
+											data: tooltipData,
+										},
 										tooltip,
 										dataRender
 									),

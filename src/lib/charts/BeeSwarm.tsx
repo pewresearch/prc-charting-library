@@ -26,13 +26,14 @@ import {
 	getLocalPoint,
 	getMaxAbsColumnValue,
 	getMinPositiveColumnValue,
-	resolveNodeShapeColors,
 	resolvePointRadius,
+	resolvePointSize,
 	getSharedProps,
 	getTooltipFormat,
 	getTooltipHeaderFormat,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolvePointPaint,
 	legendCategoryShapeStyle,
 	scaleAxisNumTicks,
 	useSize,
@@ -98,6 +99,7 @@ const BeeSwarm = () => {
 		layout,
 		colors,
 		nodes,
+		seriesStyles,
 		dataRender,
 		tooltip,
 		labels,
@@ -145,15 +147,25 @@ const BeeSwarm = () => {
 		});
 	}, [filteredData, sizeCategory, nodes.minPointSize, nodes.maxPointSize, nodes.sizeScale]);
 
+	const getCategoryKey = useCallback(
+		(row: FlatData) => {
+			if (dataRender.groupBreaksCategory) {
+				return String(row[dataRender.groupBreaksCategory] ?? '');
+			}
+			return String(valueCategory);
+		},
+		[dataRender.groupBreaksCategory, valueCategory]
+	);
+
 	const getRadius = useCallback(
 		(row: FlatData) =>
 			resolvePointRadius({
 				d: row as Record<string, unknown>,
 				sizeCategory,
-				pointSize: nodes.pointSize,
+				pointSize: resolvePointSize(nodes, seriesStyles?.[getCategoryKey(row)]),
 				radiusScale: sizeScale,
 			}),
-		[sizeCategory, nodes.pointSize, sizeScale]
+		[sizeCategory, nodes, seriesStyles, sizeScale, getCategoryKey]
 	);
 
 	const valueScale = useMemo(
@@ -187,10 +199,10 @@ const BeeSwarm = () => {
 	const colorScale = useMemo(
 		() =>
 			scaleOrdinal<string, string>({
-				domain: groupColorDomain.length > 0 ? groupColorDomain : ['default'],
+				domain: groupColorDomain.length > 0 ? groupColorDomain : [String(valueCategory)],
 				range: colors,
 			}),
-		[groupColorDomain, colors]
+		[groupColorDomain, valueCategory, colors]
 	);
 
 	const legendDomain = useMemo(() => {
@@ -260,8 +272,9 @@ const BeeSwarm = () => {
 	const centerY = swarmInnerHeight / 2;
 
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 
 	const {
@@ -298,16 +311,6 @@ const BeeSwarm = () => {
 	} = useTooltip<LayoutPoint>();
 
 	const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
-
-	const getCategoryKey = useCallback(
-		(row: FlatData) => {
-			if (dataRender.groupBreaksCategory) {
-				return String(row[dataRender.groupBreaksCategory] ?? '');
-			}
-			return 'default';
-		},
-		[dataRender.groupBreaksCategory]
-	);
 
 	const getPointColor = useCallback(
 		(row: FlatData) => {
@@ -355,11 +358,11 @@ const BeeSwarm = () => {
 		[centerY, layoutPoints]
 	);
 
-	let tooltipTimeout = 0;
+	const tooltipTimeout = useRef(0);
 	const handleMouseMove = useCallback(
 		(event: React.MouseEvent | React.TouchEvent) => {
-			if (tooltipTimeout) {
-				clearTimeout(tooltipTimeout);
+			if (tooltipTimeout.current) {
+				clearTimeout(tooltipTimeout.current);
 			}
 			if (!svgRef.current) {
 				return;
@@ -386,7 +389,7 @@ const BeeSwarm = () => {
 	);
 
 	const handleMouseLeave = useCallback(() => {
-		tooltipTimeout = window.setTimeout(() => {
+		tooltipTimeout.current = window.setTimeout(() => {
 			hideTooltip();
 		}, 300);
 	}, [hideTooltip]);
@@ -442,14 +445,16 @@ const BeeSwarm = () => {
 								category: categoryKey,
 								dataRender,
 							});
-							const { fill: defaultFill, stroke: defaultStroke } = resolveNodeShapeColors(
+							const pointPaint = resolvePointPaint(
 								nodes,
-								defaultColor
+								defaultColor,
+								seriesStyles?.[categoryKey],
+								customShapeStyles
 							);
-							const shapeFill = customShapeStyles.fill || defaultFill;
-							const shapeStroke = customShapeStyles.stroke || defaultStroke;
-							const shapeStrokeWidth = customShapeStyles.strokeWidth ?? nodes.pointStrokeWidth;
-							const markOpacity = (customShapeStyles.opacity ?? 1) * categoryOpacity;
+							const shapeFill = pointPaint.fill;
+							const shapeStroke = pointPaint.stroke;
+							const shapeStrokeWidth = pointPaint.strokeWidth;
+							const markOpacity = (pointPaint.opacity ?? 1) * categoryOpacity;
 							const cx = point.x;
 							const cy = centerY - point.y;
 
@@ -462,8 +467,10 @@ const BeeSwarm = () => {
 									cy={cy}
 									stroke={shapeStroke}
 									strokeWidth={shapeStrokeWidth}
+									strokeOpacity={pointPaint.strokeOpacity}
 									opacity={markOpacity}
 									fill={shapeFill}
+									fillOpacity={pointPaint.fillOpacity ?? 1}
 									style={{
 										cursor: wpEditorFunctions?.shapes ? 'pointer' : undefined,
 										pointerEvents: wpEditorFunctions?.shapes ? 'all' : undefined,
@@ -478,13 +485,13 @@ const BeeSwarm = () => {
 										);
 									}}
 									onBlur={() => {
-										tooltipTimeout = window.setTimeout(() => {
+										tooltipTimeout.current = window.setTimeout(() => {
 											hideTooltip();
 										}, 300);
 									}}
 									onFocus={() => {
-										if (tooltipTimeout) {
-											clearTimeout(tooltipTimeout);
+										if (tooltipTimeout.current) {
+											clearTimeout(tooltipTimeout.current);
 										}
 										showTooltip({
 											tooltipLeft: cx,

@@ -26,6 +26,8 @@ import {
 	getGroupPositioningVertical,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveBarPaint,
+	resolvePatternFill,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
 	getLinearValueDataExtent,
@@ -43,6 +45,7 @@ import {
 	BreakLine,
 	ClickableTicks,
 	ClickableLegend,
+	SeriesPatternDefs,
 } from '../overlays';
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
 import { NetValueLabels, buildNetValueItemsVerticalDiverging } from '../labels/NetValueLabels';
@@ -97,6 +100,7 @@ const DivergingBarVertical = () => {
 		annotations,
 		drawings,
 		netValues,
+		seriesStyles,
 	} = config as BaseConfig;
 
 	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
@@ -287,6 +291,7 @@ const DivergingBarVertical = () => {
 					{...ariaProps}
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 				>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
 					<Group top={padding.top} left={padding.left} role="presentation">
 						<GridRows {...dependentGridProps} />
 
@@ -362,23 +367,24 @@ const DivergingBarVertical = () => {
 														dataRender,
 													});
 
-													// Apply custom styles with fallbacks
-													const shapeFill = customShapeStyles.fill || defaultColor;
-													const shapeStroke =
-														customShapeStyles.stroke ||
-														(barConfig.hasRectStroke
-															? barConfig.rectStrokeColor
-															: undefined);
-													const shapeStrokeWidth =
-														customShapeStyles.strokeWidth ||
-														(barConfig.hasRectStroke
-															? barConfig.rectStrokeWidth
-															: undefined);
+													const paint = resolveBarPaint(
+														{
+															fill: defaultColor,
+															stroke: barConfig.hasRectStroke
+																? barConfig.rectStrokeColor
+																: undefined,
+															strokeWidth: barConfig.hasRectStroke
+																? barConfig.rectStrokeWidth
+																: undefined,
+															opacity: 1,
+														},
+														seriesStyles?.[category],
+														customShapeStyles
+													);
+													const shapeFill = resolvePatternFill(paint, category);
 													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
-														(customShapeStyles.opacity ?? 1) *
-														categoryOpacity *
-														(seriesHidden ? 0 : 1);
+														(paint.opacity ?? 1) * categoryOpacity * (seriesHidden ? 0 : 1);
 
 													return (
 														<g key={`barstack-vertical-${barStack.index}-${bar.index}-g`}>
@@ -391,8 +397,10 @@ const DivergingBarVertical = () => {
 																width={bar.width}
 																height={barValue ? Math.abs(bar.height) : 0}
 																fill={shapeFill}
-																stroke={shapeStroke}
-																strokeWidth={shapeStrokeWidth}
+																stroke={paint.stroke}
+																strokeWidth={paint.strokeWidth}
+																strokeOpacity={paint.strokeOpacity}
+																strokeDasharray={paint.strokeDasharray}
 																opacity={shapeOpacity}
 																style={{
 																	cursor: wpEditorFunctions?.shapes

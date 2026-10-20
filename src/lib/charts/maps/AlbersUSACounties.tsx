@@ -23,22 +23,30 @@ import {
 	getCustomLabel,
 	getCustomLabelText,
 	getLabelFill,
+	createValueColorScale,
+	hasCategoryValue,
 } from '@prc/charting-utilities';
-import { StyledTooltip, StyledLegend, AnnotationsLayer, DrawingsLayer, ClickableLegend } from '../../overlays';
+import {
+	StyledTooltip,
+	StyledLegend,
+	AnnotationsLayer,
+	DrawingsLayer,
+	ClickableLegend,
+	SeriesPatternDefs,
+} from '../../overlays';
 import { DraggableLabel } from '../../labels';
 
 // Visx
 import { AlbersUsa } from '@visx/geo';
 import { geoCentroid } from '@visx/vendor/d3-geo';
-import { scaleLinear, scaleOrdinal, scaleSqrt, scaleThreshold } from '@visx/scale';
+import { scaleSqrt } from '@visx/scale';
 import { useTooltip } from '@visx/tooltip';
 import { EventType } from '@visx/event/lib/types';
 import { Group } from '@visx/group';
-import { LegendLinear, LegendOrdinal, LegendThreshold } from '@visx/legend';
 
 // STYLED COMPONENTS
 import styled from '@emotion/styled';
-import MapBubbleLayer from './MapBubbleLayer';
+import MapBubbleLayer, { getBubbleGroup, getBubbleGroups } from './MapBubbleLayer';
 import MapBubbleLegend from './MapBubbleLegend';
 
 // Create topology loader for US counties
@@ -94,7 +102,8 @@ const AlbersUSACounties = () => {
 		[topology]
 	);
 
-	const { layout, colors, dataRender, map, labels, legend, tooltip, shapes, annotations, drawings } = config;
+	const { layout, colors, dataRender, map, labels, legend, tooltip, shapes, annotations, drawings, seriesStyles } =
+		config;
 	const { padding, parentClass, width, height } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
 	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
@@ -128,39 +137,18 @@ const AlbersUSACounties = () => {
 	}, [usCounties, flattenedData]);
 
 	const mergedAndFilteredData = useMemo(() => {
-		return mergedData.filter((county) => county.properties?.[category]);
+		return mergedData.filter((county) => hasCategoryValue(county.properties, category));
 	}, [mergedData, category]);
 
-	const thresholdScale = scaleThreshold<number, string>({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors,
+	const valueScale = createValueColorScale({
+		mode: dataRender.mapScale,
+		domain: dataRender.mapScaleDomain,
+		colors,
+		emptyFill: map.pathBackgroundFill,
+		seriesStyles,
+		legend,
+		legendOrder: legend.categories,
 	});
-
-	const ordinalScale = scaleOrdinal({
-		domain: dataRender.mapScaleDomain as string[],
-		range: colors,
-	});
-
-	const linearScale = scaleLinear({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors.map((c: string) => {
-			const m = c.match(/^light-dark\(([^,]+),/);
-			return m ? m[1].trim() : c;
-		}),
-	});
-
-	// eslint-disable-next-line @typescript-eslint/no-shadow
-	const getFill = (id: number | string, data: any, cat: string) => {
-		if (!id) return 'transparent';
-		if (!data?.[cat]) return map.pathBackgroundFill;
-		if (dataRender.mapScale === 'linear') {
-			return linearScale(data?.[cat]);
-		}
-		if (dataRender.mapScale === 'ordinal') {
-			return ordinalScale(data?.[cat]);
-		}
-		return thresholdScale(data?.[cat]);
-	};
 
 	const centerX = innerWidth / 2 + padding.left;
 	const centerY = innerHeight / 2 + padding.top;
@@ -185,6 +173,25 @@ const AlbersUSACounties = () => {
 				range: [map.bubble?.minRadius ?? 4, map.bubble?.maxRadius ?? 24],
 			}),
 		[maxDataValue, map.bubble?.minRadius, map.bubble?.maxRadius]
+	);
+
+	const bubbleGroups = useMemo(
+		() =>
+			getBubbleGroups({
+				groupBy: isBubbleMode ? dataRender.groupBreaksCategory : undefined,
+				category,
+				groupOrder: dataRender.groupBreaksCategoryValues,
+				data: flattenedData,
+				colors,
+			}),
+		[
+			isBubbleMode,
+			dataRender.groupBreaksCategory,
+			category,
+			dataRender.groupBreaksCategoryValues,
+			flattenedData,
+			colors,
+		]
 	);
 
 	// GET SHARED LAYOUT PROPS
@@ -225,6 +232,13 @@ const AlbersUSACounties = () => {
 				{...ariaProps}
 				style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 			>
+				<SeriesPatternDefs
+					seriesStyles={seriesStyles}
+					resolveFill={(name) =>
+						seriesStyles?.[name]?.fill ??
+						(isBubbleMode ? bubbleGroups.groupFill(name) : valueScale.keyFill(name))
+					}
+				/>
 				<Group role="presentation" top={padding.top} left={padding.left}>
 					{map.showStateBoundaries && (
 						<AlbersUsa<FeatureShape>
@@ -281,7 +295,9 @@ const AlbersUSACounties = () => {
 								const coords: [number, number] | null = projection(geoCentroid(feature));
 								const { id, properties } = feature;
 								if (!coords || !id) return null;
-								const fill = isBubbleMode ? map.pathBackgroundFill : getFill(id, properties, category);
+								const fill = isBubbleMode
+									? map.pathBackgroundFill
+									: valueScale.getFill(properties[category]);
 								const shapeIdentifier = properties.x || properties.name;
 								const shapeKey = generateElementKey(shapeIdentifier, category, null);
 								const customShapeStyles = isBubbleMode ? {} : shapes?.customStyles?.[shapeKey] || {};
@@ -341,6 +357,9 @@ const AlbersUSACounties = () => {
 								const { opacity, stroke, strokeWidth } = isBubbleMode
 									? { opacity: 1, stroke: map.pathStroke, strokeWidth: map.pathStrokeWidth }
 									: getTooltipMapDeemphasisProps(tooltip, map, id, tooltipData as FlatData);
+								const binPaint = isBubbleMode
+									? { fill: shapeFill, stroke, strokeWidth, opacity }
+									: valueScale.getPaint(properties[category], { stroke, strokeWidth, opacity });
 
 								let polyPointerEvents: CSSProperties['pointerEvents'];
 								if (isBubbleMode) {
@@ -354,10 +373,11 @@ const AlbersUSACounties = () => {
 										key={`map-feature-${i}`}
 										className="map-feature"
 										d={path || ''}
-										fill={shapeFill}
-										stroke={customShapeStyles.stroke || stroke}
-										opacity={customShapeStyles.opacity ?? opacity}
-										strokeWidth={customShapeStyles.strokeWidth ?? strokeWidth}
+										fill={customShapeStyles.fill || binPaint.fill}
+										stroke={customShapeStyles.stroke || binPaint.stroke}
+										opacity={customShapeStyles.opacity ?? binPaint.opacity}
+										strokeWidth={customShapeStyles.strokeWidth ?? binPaint.strokeWidth}
+										strokeOpacity={customShapeStyles.strokeOpacity ?? binPaint.strokeOpacity}
 										tabIndex={isBubbleMode ? -1 : 0}
 										style={{
 											cursor: !isBubbleMode && wpEditorFunctions?.shapes ? 'pointer' : undefined,
@@ -397,7 +417,13 @@ const AlbersUSACounties = () => {
 											...properties,
 											x: properties.x || properties.name,
 										};
-										const contrastSrc = isBubbleMode ? colors[0] : shapeFill;
+										const bubbleGroup = getBubbleGroup(bubbleGroups, properties);
+										const contrastSrc = isBubbleMode
+											? bubbleGroups.groupFill(bubbleGroup ?? '')
+											: shapeFill;
+										const labelSeriesKey = isBubbleMode
+											? (bubbleGroup ?? '')
+											: String(valueScale.styleKey(properties[category]) ?? '');
 										return (
 											<DraggableLabel
 												key={`county-label-${id}`}
@@ -405,6 +431,7 @@ const AlbersUSACounties = () => {
 												y={coords[1]}
 												dataPoint={dataPoint}
 												category={category}
+												seriesKey={labelSeriesKey}
 												defaultDx={labels.labelPositionDX}
 												defaultDy={labels.labelPositionDY}
 												chartInnerWidth={innerWidth}
@@ -436,6 +463,8 @@ const AlbersUSACounties = () => {
 											category={category}
 											bubbleRadiusScale={bubbleRadiusScale}
 											fill={colors[0]}
+											groups={bubbleGroups}
+											seriesStyles={seriesStyles}
 											bubbleConfig={map.bubble}
 											svgRef={svgRef}
 											showTooltip={showTooltip}
@@ -477,58 +506,14 @@ const AlbersUSACounties = () => {
 					chartWidth={chartWidth}
 					chartHeight={chartHeight}
 				>
-					{dataRender.mapScale === 'threshold' && (
-						<LegendThreshold
-							{...legendProps}
-							scale={thresholdScale}
-							labelLower={legend.labelLower}
-							labelUpper={legend.labelUpper}
-							labelDelimiter={legend.labelDelimiter}
-						>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendThreshold>
-					)}
-					{dataRender.mapScale === 'ordinal' && (
-						<LegendOrdinal
-							{...legendProps}
-							scale={ordinalScale}
-							domain={legend.categories.length > 0 ? legend.categories : ordinalScale.domain()}
-						>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => ordinalScale(label.datum)}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendOrdinal>
-					)}
-					{dataRender.mapScale === 'linear' && (
-						<LegendLinear {...legendProps} scale={linearScale}>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendLinear>
-					)}
+					<ClickableLegend
+						labels={valueScale.legendItems}
+						shape={legend.markerStyle}
+						fill={(label) => label.value}
+						shapeStyle={legendProps.shapeStyle}
+						direction={legend.orientation}
+						legendLabelProps={legendProps.legendLabelProps}
+					/>
 				</StyledLegend>
 			)}
 
@@ -587,12 +572,14 @@ const AlbersUSACounties = () => {
 						dangerouslySetInnerHTML={{
 							__html: tooltipData.customTooltip
 								? tooltipData.customTooltip
-								: getTooltipFormat({
+								: getTooltipFormat(
+										{
 											x: tooltipData.x,
 											y: tooltipData.y,
 											category: tooltipData.category,
 											color: tooltipData.fill,
-										data: tooltipData,},
+											data: tooltipData,
+										},
 										tooltip,
 										dataRender
 									),

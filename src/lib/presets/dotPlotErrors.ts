@@ -1,5 +1,4 @@
-import { baseConfig } from '@prc/charting-utilities';
-import { BaseConfig as BaseConfigType } from '@prc/charting-utilities';
+import { baseConfig, BaseConfig as BaseConfigType } from '@prc/charting-utilities';
 
 const independentTickFont = baseConfig.independentAxis.tickLabels.fontFamily;
 const independentAxisLabelFont = baseConfig.independentAxis.axisLabel.fontFamily;

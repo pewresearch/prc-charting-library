@@ -8,10 +8,10 @@
  */
 
 if (
-  typeof window !== 'undefined' &&
-  typeof window.prcChartingLibraryConfig !== 'undefined' &&
-  typeof window.prcChartingLibraryConfig.buildUrl !== 'undefined'
+	typeof window !== 'undefined' &&
+	typeof window.prcChartingLibraryConfig !== 'undefined' &&
+	typeof window.prcChartingLibraryConfig.buildUrl !== 'undefined'
 ) {
-  // eslint-disable-next-line no-undef
-  __webpack_public_path__ = window.prcChartingLibraryConfig.buildUrl
+	// eslint-disable-next-line no-undef, camelcase
+	__webpack_public_path__ = window.prcChartingLibraryConfig.buildUrl;
 }

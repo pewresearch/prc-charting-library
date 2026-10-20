@@ -2,8 +2,8 @@
 import { useCallback, useContext, useMemo, useRef, RefObject, CSSProperties } from 'react';
 
 // INTERNAL
-import { DataContext } from '@prc/charting-utilities';
 import {
+	DataContext,
 	scaleAxisNumTicks,
 	useSize,
 	getCustomTooltip,
@@ -11,25 +11,24 @@ import {
 	getGroupValue,
 	generateElementKey,
 	shouldShowLinePoint,
-} from '@prc/charting-utilities';
-import { useLineFamilyScales } from '../scales';
-import {
-	getAxisProps,
 	getChartDimensions,
-	getGridProps,
-	getLabelProps,
-	getVoronoiProps,
 	getTooltipFormat,
 	getTooltipHeaderFormat,
-	getTooltipVisible,
 	getLocalPoint,
 	getSharedProps,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
-	resolveNodeShapeColors,
+	resolveBarPaint,
+	resolveLinePathPaint,
+	resolvePointPaint,
+	resolvePointSize,
+	resolvePatternFill,
 	legendCategoryShapeStyle,
+	newDateByFormat,
+	getLabelFill,
 } from '@prc/charting-utilities';
-import { newDateByFormat, getLabelFill } from '@prc/charting-utilities';
+import type { FlatData, Size, BaseConfig, TableData } from '@prc/charting-utilities';
+import { useLineFamilyScales } from '../scales';
 import {
 	StyledTooltip,
 	StyledLegend,
@@ -38,22 +37,18 @@ import {
 	DrawingsLayer,
 	ClickableTicks,
 	ClickableLegend,
+	SeriesPatternDefs,
 	ZeroBaseline,
 } from '../overlays';
 import { AnimatedArea, AnimatedCircle, AnimatedLinePath, AnimatedLabel, TransitionProvider } from '../animation';
-import { DraggableLabel } from '../labels';
 import {
+	DraggableLabel,
 	DirectSeriesLegendLabels,
 	getFirstLastLabelPlacement,
 	getLineLabelContent,
 	getStackedSeriesDependentValue,
 	useDirectSeriesLegend,
 } from '../labels';
-// TYPES
-import type { FlatData } from '@prc/charting-utilities';
-import type { Size } from '@prc/charting-utilities';
-import type { BaseConfig } from '@prc/charting-utilities';
-import type { TableData } from '@prc/charting-utilities';
 // VISX
 import { Circle, AreaStack } from '@visx/shape';
 import * as Curve from '@visx/curve';
@@ -100,7 +95,6 @@ const StackedArea = () => {
 		colors,
 		nodes,
 		shapes,
-		events,
 		dataRender,
 		tooltip,
 		labels,
@@ -109,17 +103,18 @@ const StackedArea = () => {
 		voronoi: voronoiConfig,
 		annotations,
 		drawings,
+		seriesStyles,
 	} = config;
 
 	// SIZE AND LAYOUT
 	const { height, width, parentClass, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
-	let size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
+	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
 
 	const { chartWidth, innerWidth, innerHeight, overflow } = getChartDimensions(size, layout);
-	let isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
+	const isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
 
-	let scaledNumTicks = useMemo(
+	const scaledNumTicks = useMemo(
 		() => scaleAxisNumTicks(independentAxis.tickCount || 5, chartWidth, width),
 		[independentAxis.tickCount, chartWidth, width]
 	);
@@ -168,7 +163,7 @@ const StackedArea = () => {
 								y: d[c],
 								ySum: sumOfYs,
 								category: c,
-								label: d['__labels']?.[c] ? d['__labels'][c] : '',
+								label: d.__labels?.[c] ? d.__labels[c] : '',
 								tooltip: _areaTip,
 								tooltipHeader: _areaHdr,
 								color: resolveCategoryColor({
@@ -178,6 +173,7 @@ const StackedArea = () => {
 								}),
 							};
 						}
+						return null;
 					})
 				)
 				.flat()
@@ -191,9 +187,8 @@ const StackedArea = () => {
 		(d: FlatData) => {
 			if (independentAxis.scale === 'time') {
 				return newDateByFormat(d[dataRender.x], dataRender.xFormat) as Date;
-			} else {
-				return d[dataRender.x] as number;
 			}
+			return d[dataRender.x] as number;
 		},
 		[dataRender, independentAxis]
 	);
@@ -237,25 +232,19 @@ const StackedArea = () => {
 				width: innerWidth,
 				height: innerHeight,
 			})(stackedVoronoiData),
-		[
-			innerWidth,
-			innerHeight,
-			independentScale,
-			dependentScale,
-			stackedVoronoiData,
-			getIndependentValue,
-			getDependentValue,
-		]
+		[innerWidth, innerHeight, independentScale, dependentScale, stackedVoronoiData, getIndependentValue]
 	);
 	const interpolation: keyof CurveType = line.interpolation;
 
 	// GET SHARED LAYOUT PROPS
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 	const {
 		dependentAxisProps,
@@ -354,11 +343,11 @@ const StackedArea = () => {
 			showTooltip,
 			hideTooltip,
 			voronoiLayout,
-			getDependentValue,
 			getIndependentValue,
 			innerWidth,
 			innerHeight,
-			layout,
+			padding.left,
+			padding.top,
 			tooltipTimeout,
 		]
 	);
@@ -392,21 +381,23 @@ const StackedArea = () => {
 		const groupValue = getGroupValue(d, dataRender);
 		const shapeKey = generateElementKey(d.x, category, groupValue);
 		const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-		const { fill: defaultFill, stroke: defaultStroke } = resolveNodeShapeColors(nodes, seriesColor);
-		const shapeFill = customShapeStyles.fill || defaultFill;
-		const shapeStroke = customShapeStyles.stroke || defaultStroke;
-		const shapeStrokeWidth = customShapeStyles.strokeWidth ?? nodes.pointStrokeWidth;
-		const shapeOpacity = (customShapeStyles.opacity ?? 1) * seriesOpacity;
+		const pointPaint = resolvePointPaint(nodes, seriesColor, seriesStyles?.[category], customShapeStyles);
+		const shapeFill = pointPaint.fill;
+		const shapeStroke = pointPaint.stroke;
+		const shapeStrokeWidth = pointPaint.strokeWidth;
+		const shapeOpacity = (pointPaint.opacity ?? 1) * seriesOpacity;
+		const pointRadius = resolvePointSize(nodes, seriesStyles?.[category], customShapeStyles);
 		return (
 			<StyledAnimatedCircle
 				key={`stacked-area-point-${category}-${j}`}
-				r={nodes.pointSize}
+				r={pointRadius}
 				cx={cx}
 				cy={cy}
 				entranceDelay={entranceDelay}
 				entranceDuration={entranceDuration}
 				stroke={shapeStroke}
 				strokeWidth={shapeStrokeWidth}
+				strokeOpacity={pointPaint.strokeOpacity}
 				fill={shapeFill}
 				opacity={shapeOpacity}
 				style={{
@@ -421,7 +412,7 @@ const StackedArea = () => {
 				fillOpacity={
 					tooltipData && tooltipVisible && tooltip.deemphasizeSiblings && tooltipData.category !== category
 						? tooltip.deemphasizeOpacity
-						: (nodes.pointFillOpacity ?? 1)
+						: (pointPaint.fillOpacity ?? 1)
 				}
 				tabIndex={wpEditorFunctions?.shapes ? 0 : undefined}
 				onFocus={() => {
@@ -459,6 +450,7 @@ const StackedArea = () => {
 					{...ariaProps}
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 				>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
 					<Group
 						top={padding.top}
 						left={padding.left}
@@ -535,6 +527,14 @@ const StackedArea = () => {
 										category,
 										dataRender,
 									});
+									const areaPaint = resolveBarPaint(
+										{
+											fill: seriesColor,
+											opacity: 1,
+										},
+										seriesStyles?.[category]
+									);
+									const areaFill = resolvePatternFill(areaPaint, category);
 									const filteredStackData = stack.filter(
 										(d: any) => d.data[category] !== '' || d.data[category]
 									);
@@ -549,8 +549,9 @@ const StackedArea = () => {
 											}))}
 											curve={Curve[interpolation]}
 											strokeWidth={0}
-											fill={seriesColor}
+											fill={areaFill}
 											fillOpacity={line.areaFillOpacity * seriesOpacity}
+											opacity={areaPaint.opacity}
 										/>
 									);
 								});
@@ -565,6 +566,7 @@ const StackedArea = () => {
 										category,
 										dataRender,
 									});
+									const pathPaint = resolveLinePathPaint(line, seriesColor, seriesStyles?.[category]);
 									const filteredStackData = stack.filter(
 										(d: any) => d.data[category] !== '' || d.data[category]
 									);
@@ -580,20 +582,21 @@ const StackedArea = () => {
 												tooltipVisible &&
 												tooltip.deemphasizeSiblings &&
 												tooltipData.category === category
-													? line.strokeWidth + 1
-													: line.strokeWidth
+													? (pathPaint.strokeWidth ?? line.strokeWidth) + 1
+													: pathPaint.strokeWidth
 											}
-											stroke={seriesColor}
+											stroke={pathPaint.stroke}
 											strokeOpacity={
-												(tooltipData &&
+												tooltipData &&
 												tooltipVisible &&
 												tooltip.deemphasizeSiblings &&
 												tooltipData.category !== category
 													? tooltip.deemphasizeOpacity
-													: 1) * seriesOpacity
+													: pathPaint.strokeOpacity
 											}
+											opacity={(pathPaint.opacity ?? 1) * seriesOpacity}
 											curve={Curve[interpolation]}
-											strokeDasharray={line.strokeDasharray}
+											strokeDasharray={pathPaint.strokeDasharray}
 										>
 											{(glide) =>
 												line.showPoints
@@ -650,13 +653,6 @@ const StackedArea = () => {
 										return null;
 									}
 
-									// Calculate stacked Y position (sum of all previous categories + current)
-									const ySum = dataRender.categories
-										.slice(0, categoryIndex + 1)
-										.reduce((acc: number, curr: string) => {
-											return Number(acc) + Number(d[curr]);
-										}, 0);
-
 									const { content: labelContent, defaultLabel } = getLineLabelContent(
 										d,
 										category,
@@ -667,6 +663,13 @@ const StackedArea = () => {
 
 									// Don't render if no content
 									if (!labelContent) return null;
+
+									// Calculate stacked Y position (sum of all previous categories + current)
+									const ySum = dataRender.categories
+										.slice(0, categoryIndex + 1)
+										.reduce((acc: number, curr: string) => {
+											return Number(acc) + Number(d[curr]);
+										}, 0);
 
 									const placement = getFirstLastLabelPlacement({
 										pointIndex: j,

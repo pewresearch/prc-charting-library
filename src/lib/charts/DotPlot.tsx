@@ -18,7 +18,9 @@ import {
 	getTooltipHeaderFormat,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
-	resolveNodeShapeColors,
+	resolvePointPaint,
+	resolvePointSize,
+	resolvePatternFill,
 	legendCategoryShapeStyle,
 	useSize,
 	getLinearValueDataExtent,
@@ -33,12 +35,13 @@ import {
 	BreakLine,
 	ClickableLegend,
 	ClickableTicks,
+	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
 } from '../overlays';
 import { AnimatedCircle, AnimatedLinePath, AnimatedLabel, TransitionProvider, useAnimationConfig } from '../animation';
-import { DraggableLabel } from '../labels';
 import {
+	DraggableLabel,
 	buildAllDotPlotLabelInputs,
 	buildDotPlotLabelId,
 	getDeclutterOffset,
@@ -103,6 +106,7 @@ const DotPlot = () => {
 		annotations,
 		drawings,
 		voronoi: voronoiConfig,
+		seriesStyles,
 	} = config;
 
 	// Connector lines are a "follow" (secondary) element: they wait for the
@@ -139,7 +143,7 @@ const DotPlot = () => {
 
 	// SCALES
 	const independentScale = useMemo(() => {
-		const allValues = groupedData.flatMap(({ data }) => data.map(getIndependentValue));
+		const allValues = groupedData.flatMap((group) => group.data.map(getIndependentValue));
 		return scalePoint<string>({
 			domain: allValues,
 			range: [0, innerHeight],
@@ -155,7 +159,7 @@ const DotPlot = () => {
 
 	const chartHeight = useMemo(() => {
 		return dataRender.groupBreaksActive ? actualContentHeight + padding.top + padding.bottom : height;
-	}, [actualContentHeight, padding.top, padding.bottom, height]);
+	}, [dataRender.groupBreaksActive, actualContentHeight, padding.top, padding.bottom, height]);
 
 	const dependentScale = useMemo(
 		() =>
@@ -181,13 +185,15 @@ const DotPlot = () => {
 
 	// GET SHARED LAYOUT PROPS
 	// For shared props, we use the first group's data (or flattened if no grouping)
-	const sharedPropsData = groupedData.length > 0 ? groupedData[0].data : [];
+	const sharedPropsData = useMemo(() => (groupedData.length > 0 ? groupedData[0].data : []), [groupedData]);
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 	const {
 		dependentAxisProps,
@@ -313,6 +319,7 @@ const DotPlot = () => {
 		return points;
 		// `data` is required: __tooltips / label customs live on row objects and
 		// must rebake voronoi tip text when Refine customizations change.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [groupPositioning, categories, dependentScale, getIndependentValue, data]);
 
 	const voronoiPlotHeight = actualContentHeight;
@@ -369,6 +376,7 @@ const DotPlot = () => {
 					{...ariaProps}
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 				>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
 					<LeaderLineProvider>
 						<Group
 							top={padding.top}
@@ -402,11 +410,11 @@ const DotPlot = () => {
 
 							{/* 2. Grid rows for each group */}
 							{groupPositioning.map((groupPos, groupIndex) => {
-								const { group, data, startY, height } = groupPos;
+								const { group, data: groupData, startY, height: groupHeight } = groupPos;
 
 								const gridScale = scalePoint<string>({
-									domain: data.map(getIndependentValue),
-									range: [0, height],
+									domain: groupData.map(getIndependentValue),
+									range: [0, groupHeight],
 									padding: 0.5,
 								});
 
@@ -419,7 +427,7 @@ const DotPlot = () => {
 											strokeWidth={independentGridProps.strokeWidth}
 											strokeOpacity={independentGridProps.strokeOpacity}
 											strokeDasharray={independentGridProps.strokeDasharray}
-											numTicks={data.length}
+											numTicks={groupData.length}
 										/>
 									</Group>
 								);
@@ -429,11 +437,11 @@ const DotPlot = () => {
 							{independentAxis.active && (
 								<>
 									{groupPositioning.map((groupPos, groupIndex) => {
-										const { data, startY, height } = groupPos;
+										const { data: groupData, startY, height: groupHeight } = groupPos;
 
 										const groupScale = scalePoint<string>({
-											domain: data.map(getIndependentValue),
-											range: [startY, startY + height],
+											domain: groupData.map(getIndependentValue),
+											range: [startY, startY + groupHeight],
 											padding: 0.5,
 										});
 
@@ -441,8 +449,8 @@ const DotPlot = () => {
 											<AxisLeft
 												key={`axis-${groupIndex}`}
 												{...independentAxisProps}
-												tickValues={data.map(getIndependentValue)}
-												numTicks={data.length}
+												tickValues={groupData.map(getIndependentValue)}
+												numTicks={groupData.length}
 												scale={groupScale}
 											/>
 										);
@@ -458,11 +466,11 @@ const DotPlot = () => {
 
 							{/* 4. Chart plot elements */}
 							{groupPositioning.map((groupPos, groupIndex) => {
-								const { group, data, startY, height, breakHeight } = groupPos;
+								const { group, data: groupData, startY, height: groupHeight } = groupPos;
 
 								const groupScale = scalePoint<string>({
-									domain: data.map(getIndependentValue),
-									range: [startY, startY + height],
+									domain: groupData.map(getIndependentValue),
+									range: [startY, startY + groupHeight],
 									padding: 0.5,
 								});
 
@@ -472,7 +480,7 @@ const DotPlot = () => {
 											{/* Render connecting lines if enabled */}
 											{dotPlot.connectPoints && (
 												<g>
-													{data?.map((d: FlatData, i: number) => {
+													{groupData?.map((d: FlatData, i: number) => {
 														const values: number[] = categories.map(
 															(category: string) => d[category]
 														);
@@ -480,7 +488,12 @@ const DotPlot = () => {
 														const maxVal = max(values) as number;
 
 														// check that minVal and maxVal are not empty, then create connecting line
-														if (minVal != null && maxVal != null) {
+														if (
+															minVal !== null &&
+															minVal !== undefined &&
+															maxVal !== null &&
+															maxVal !== undefined
+														) {
 															const rowY = groupScale(d[dataRender.x]) ?? 0;
 															return (
 																<AnimatedLinePath
@@ -505,6 +518,7 @@ const DotPlot = () => {
 																/>
 															);
 														}
+														return null;
 													})}
 												</g>
 											)}
@@ -513,7 +527,7 @@ const DotPlot = () => {
 											{categories.map((category: string, i: number) => {
 												// it's not guaranteed that all categories have the same number of data points
 												// so we need to filter out any data points that don't have a value for the current category
-												const filteredData = data.filter(
+												const filteredData = groupData.filter(
 													(d: FlatData) => d[category] || d[category] !== ''
 												);
 												const seriesColor = resolveCategoryColor({
@@ -537,13 +551,20 @@ const DotPlot = () => {
 																	}
 																	className="error-bars"
 																>
-																	{data?.map((d: FlatData, k: number) => {
+																	{groupData?.map((d: FlatData, k: number) => {
 																		const errorBar =
 																			filteredData[k]?.__errorBars?.[category];
 																		const ebMin = errorBar?.min;
 																		const ebMax = errorBar?.max;
 
-																		if (ebMin == null || ebMax == null) return null;
+																		if (
+																			ebMin === null ||
+																			ebMin === undefined ||
+																			ebMax === null ||
+																			ebMax === undefined
+																		) {
+																			return null;
+																		}
 
 																		const groupValue = getGroupValue(d, dataRender);
 																		const elementKey = generateElementKey(
@@ -639,30 +660,30 @@ const DotPlot = () => {
 																);
 																const customShapeStyles =
 																	shapes?.customStyles?.[shapeKey] || {};
-																const defaultColor =
-																	nodes.pointFill === 'inherit'
-																		? seriesColor
-																		: nodes.pointFill;
-																const defaultStroke =
-																	nodes.pointStroke === 'inherit'
-																		? seriesColor
-																		: nodes.pointStroke;
-
-																// Apply custom styles with fallbacks
-																const shapeFill =
-																	customShapeStyles.fill || defaultColor;
-																const shapeStroke =
-																	customShapeStyles.stroke || defaultStroke;
-																const shapeStrokeWidth =
-																	customShapeStyles.strokeWidth ??
-																	nodes.pointStrokeWidth;
+																const pointPaint = resolvePointPaint(
+																	nodes,
+																	seriesColor,
+																	seriesStyles?.[category],
+																	customShapeStyles
+																);
+																const shapeFill = resolvePatternFill(
+																	pointPaint,
+																	category
+																);
+																const shapeStroke = pointPaint.stroke;
+																const shapeStrokeWidth = pointPaint.strokeWidth;
 																const shapeOpacity =
-																	(customShapeStyles.opacity ?? 1) * seriesOpacity;
+																	(pointPaint.opacity ?? 1) * seriesOpacity;
+																const pointRadius = resolvePointSize(
+																	nodes,
+																	seriesStyles?.[category],
+																	customShapeStyles
+																);
 
 																return (
 																	<StyledAnimatedCircle
 																		key={`dot-plot-node-${groupIndex}-${i}-${j}`}
-																		r={nodes.pointSize}
+																		r={pointRadius}
 																		tabIndex={0}
 																		cy={groupScale(getIndependentValue(d)) || 0}
 																		cx={
@@ -685,7 +706,7 @@ const DotPlot = () => {
 																				wpEditorFunctions.shapes.onClick(
 																					d,
 																					category,
-																					defaultColor,
+																					seriesColor,
 																					event.currentTarget,
 																					groupValue
 																				);
@@ -697,7 +718,7 @@ const DotPlot = () => {
 																			tooltip.deemphasizeSiblings &&
 																			tooltipData.category !== category
 																				? tooltip.deemphasizeOpacity
-																				: 1
+																				: (pointPaint.strokeOpacity ?? 1)
 																		}
 																		fill={shapeFill}
 																		fillOpacity={
@@ -706,7 +727,7 @@ const DotPlot = () => {
 																			tooltip.deemphasizeSiblings &&
 																			tooltipData.category !== category
 																				? tooltip.deemphasizeOpacity
-																				: (nodes.pointFillOpacity ?? 1)
+																				: (pointPaint.fillOpacity ?? 1)
 																		}
 																		onBlur={() => {
 																			tooltipTimeoutRef.current =
@@ -762,11 +783,6 @@ const DotPlot = () => {
 																	// Don't render if no content
 																	if (!labelContent) return null;
 
-																	const dpAnchorX = dependentScale(
-																		filteredData[j][category]
-																	);
-																	const dpAnchorY =
-																		(groupScale(getIndependentValue(d)) || 0) - 10;
 																	const dpLabelId = buildDotPlotLabelId(
 																		groupIndex,
 																		i,
@@ -788,6 +804,11 @@ const DotPlot = () => {
 																		return null;
 																	}
 
+																	const dpAnchorX = dependentScale(
+																		filteredData[j][category]
+																	);
+																	const dpAnchorY =
+																		(groupScale(getIndependentValue(d)) || 0) - 10;
 																	const dpDotY =
 																		groupScale(getIndependentValue(d)) || 0;
 
@@ -801,7 +822,7 @@ const DotPlot = () => {
 																			defaultDx={dpDx}
 																			defaultDy={dpDy}
 																			chartInnerWidth={innerWidth}
-																			chartInnerHeight={height}
+																			chartInnerHeight={groupHeight}
 																			fill={
 																				labelConfig.color === 'inherit'
 																					? seriesColor
@@ -837,13 +858,13 @@ const DotPlot = () => {
 							{diffColumn.active && diffColumn.category && (
 								<>
 									{groupPositioning.map((groupPos, groupIndex) => {
-										const { group, data, startY, height } = groupPos;
+										const { group, data: groupData, startY, height: groupHeight } = groupPos;
 
 										// Create individual scale for this group with relative positioning (0 to height)
 										// since the Group is already positioned at startY
 										const groupScale = scalePoint<string>({
-											domain: data.map(getIndependentValue),
-											range: [0, height],
+											domain: groupData.map(getIndependentValue),
+											range: [0, groupHeight],
 											padding: 0.5,
 										});
 
@@ -851,9 +872,9 @@ const DotPlot = () => {
 											<Group key={`diff-column-${groupIndex}`} top={startY}>
 												<DiffColumn
 													diffColumn={diffColumn}
-													innerHeight={height}
+													innerHeight={groupHeight}
 													innerWidth={innerWidth}
-													flattenedData={data}
+													flattenedData={groupData}
 													scale={groupScale}
 													dataRender={dataRender}
 													labels={labelConfig}
@@ -938,18 +959,18 @@ const DotPlot = () => {
 						{labelConfig.active && wpEditorFunctions?.labels && (
 							<Group top={padding.top} left={padding.left}>
 								{groupPositioning.map((groupPos, groupIndex) => {
-									const { data, startY, height } = groupPos;
+									const { data: groupData, startY, height: groupHeight } = groupPos;
 
 									const groupScale = scalePoint<string>({
-										domain: data.map(getIndependentValue),
-										range: [startY, startY + height],
+										domain: groupData.map(getIndependentValue),
+										range: [startY, startY + groupHeight],
 										padding: 0.5,
 									});
 
 									return (
 										<Group key={`draggable-labels-group-${groupIndex}`}>
 											{categories.map((category: string, i: number) => {
-												const filteredData = data.filter(
+												const filteredData = groupData.filter(
 													(d: FlatData) => d[category] || d[category] !== ''
 												);
 												const seriesColor = resolveCategoryColor({
@@ -974,8 +995,6 @@ const DotPlot = () => {
 
 													const labelContent = customLabel || defaultLabel;
 
-													const edDpAnchorX = dependentScale(filteredData[j][category]);
-													const edDpAnchorY = (groupScale(getIndependentValue(d)) || 0) - 10;
 													const edDpLabelId = buildDotPlotLabelId(
 														groupIndex,
 														i,
@@ -992,6 +1011,8 @@ const DotPlot = () => {
 														return null;
 													}
 
+													const edDpAnchorX = dependentScale(filteredData[j][category]);
+													const edDpAnchorY = (groupScale(getIndependentValue(d)) || 0) - 10;
 													const edDpDotY = groupScale(getIndependentValue(d)) || 0;
 
 													return (
@@ -1096,7 +1117,8 @@ const DotPlot = () => {
 							dangerouslySetInnerHTML={{
 								__html: tooltipData.tooltip
 									? tooltipData.tooltip
-									: getTooltipFormat({
+									: getTooltipFormat(
+											{
 												y: getDependentValue(tooltipData),
 												x: getIndependentValue(tooltipData).toString(),
 												category: tooltipData.category,
@@ -1105,7 +1127,8 @@ const DotPlot = () => {
 													fallback: colorScale(tooltipData.category || ''),
 													dataRender,
 												}),
-										data: tooltipData,},
+												data: tooltipData,
+											},
 											tooltip,
 											dataRender
 										),

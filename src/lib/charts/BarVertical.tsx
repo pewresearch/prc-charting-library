@@ -23,6 +23,8 @@ import {
 	getGroupPositioningVertical,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveBarPaint,
+	resolvePatternFill,
 	legendCategoryShapeStyle,
 	getLinearValueDataExtent,
 	hasExplicitAxisDomain,
@@ -37,6 +39,7 @@ import {
 	BreakLine,
 	ClickableTicks,
 	ClickableLegend,
+	SeriesPatternDefs,
 	ZeroBaseline,
 } from '../overlays';
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
@@ -72,10 +75,11 @@ const BarVertical = () => {
 		labels,
 		shapes,
 		legend,
-		bar,
+		bar: barConfig,
 		annotations,
 		drawings,
 		netValues,
+		seriesStyles,
 	} = config;
 
 	// SIZE AND LAYOUT
@@ -112,13 +116,13 @@ const BarVertical = () => {
 	);
 	// SCALES
 	const independentScale = useMemo(() => {
-		const allValues = groupedData.flatMap(({ data }) => data.map(getIndependentValue));
+		const allValues = groupedData.flatMap((group) => group.data.map(getIndependentValue));
 		return scaleBand<string>({
 			domain: allValues,
 			range: [0, innerWidth],
-			padding: bar.barGroupPadding,
+			padding: barConfig.barGroupPadding,
 		});
-	}, [groupedData, getIndependentValue, innerWidth, bar.barGroupPadding]);
+	}, [groupedData, getIndependentValue, innerWidth, barConfig.barGroupPadding]);
 
 	// GROUP POSITIONING - Calculate actualContentWidth
 	const { groupPositioning, actualContentWidth } = useMemo(
@@ -133,9 +137,9 @@ const BarVertical = () => {
 		() =>
 			scaleBand<string>({
 				domain: dataRender.categories,
-				padding: bar.barPadding,
+				padding: barConfig.barPadding,
 			}),
-		[dataRender.categories, bar.barPadding]
+		[dataRender.categories, barConfig.barPadding]
 	);
 	const dependentScale = useMemo(
 		() =>
@@ -192,13 +196,15 @@ const BarVertical = () => {
 
 	// GET SHARED LAYOUT PROPS
 	// For shared props, we use the first group's data (or flattened if no grouping)
-	const sharedPropsData = groupedData.length > 0 ? groupedData[0].data : [];
+	const sharedPropsData = useMemo(() => (groupedData.length > 0 ? groupedData[0].data : []), [groupedData]);
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 	const {
 		dependentAxisProps,
@@ -262,29 +268,30 @@ const BarVertical = () => {
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 					{...ariaProps}
 				>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
 					<Group top={padding.top} left={padding.left} role="presentation">
 						<GridRows {...dependentGridProps} />
 
 						{/* Render grouped bar charts with breaks */}
 						{groupPositioning.map((groupPos, groupIndex) => {
-							const { group, data, startX, width, breakWidth } = groupPos;
+							const { group, data: groupData, startX, width: groupWidth, breakWidth } = groupPos;
 
 							// Create scales for this group
 							const groupScale = createGroupBandScale(
-								data.map(getIndependentValue),
-								[startX, startX + width],
-								bar.barGroupPadding
+								groupData.map(getIndependentValue),
+								[startX, startX + groupWidth],
+								barConfig.barGroupPadding
 							);
 
 							const gridScale = createGroupBandScale(
-								data.map(getIndependentValue),
-								[0, width],
-								bar.barGroupPadding
+								groupData.map(getIndependentValue),
+								[0, groupWidth],
+								barConfig.barGroupPadding
 							);
 
 							const groupKeyScale = scaleBand<string>({
 								domain: dataRender.categories,
-								padding: bar.barPadding,
+								padding: barConfig.barPadding,
 							});
 							groupKeyScale.rangeRound([0, groupScale.bandwidth()]);
 
@@ -299,15 +306,15 @@ const BarVertical = () => {
 											strokeWidth={independentGridProps.strokeWidth}
 											strokeOpacity={independentGridProps.strokeOpacity}
 											strokeDasharray={independentGridProps.strokeDasharray}
-											numTicks={data.length}
+											numTicks={groupData.length}
 										/>
 									</Group>
 
 									<BarGroup
-										data={data}
+										data={groupData}
 										keys={dataRender.categories}
 										height={innerHeight}
-										width={width}
+										width={groupWidth}
 										x0={getIndependentValue}
 										x0Scale={groupScale}
 										x1Scale={groupKeyScale}
@@ -316,7 +323,7 @@ const BarVertical = () => {
 									>
 										{(barGroups) => {
 											return barGroups.map((barGroup, i) => {
-												const independentValue = data[i][dataRender.x].toString();
+												const independentValue = groupData[i][dataRender.x].toString();
 												return (
 													<Group
 														key={`bar-group-${groupIndex}-${barGroup.index}-${barGroup.x0}`}
@@ -325,17 +332,19 @@ const BarVertical = () => {
 														{barGroup.bars.map((bar) => {
 															// check if there are custom labels or tooltips in the data model
 															const customLabelText = getCustomLabelText(
-																data[i],
+																groupData[i],
 																bar.key
 															);
 															const customLabel =
-																customLabelText || getCustomLabel(data[i], bar.key);
+																customLabelText ||
+																getCustomLabel(groupData[i], bar.key);
 															const { body: customTooltip, header: customHeader } =
-																getCustomTooltip(data[i], bar.key);
-															const isHighlighted = data[i].__isHighlighted?.[bar.key];
+																getCustomTooltip(groupData[i], bar.key);
+															const isHighlighted =
+																groupData[i].__isHighlighted?.[bar.key];
 
 															// Get custom shape styles (group-aware key)
-															const groupValue = getGroupValue(data[i], dataRender);
+															const groupValue = getGroupValue(groupData[i], dataRender);
 															const shapeKey = generateElementKey(
 																independentValue,
 																bar.key,
@@ -349,18 +358,24 @@ const BarVertical = () => {
 																isHighlighted
 															);
 
-															// Apply custom styles with fallbacks
-															const shapeFill = customShapeStyles.fill || defaultColor;
-															const shapeStroke = customShapeStyles.stroke || undefined;
-															const shapeStrokeWidth =
-																customShapeStyles.strokeWidth || undefined;
+															const paint = resolveBarPaint(
+																{
+																	fill: defaultColor,
+																	opacity: 1,
+																},
+																seriesStyles?.[bar.key],
+																customShapeStyles
+															);
+															const shapeFill = resolvePatternFill(paint, bar.key);
+															const shapeStroke = paint.stroke;
+															const shapeStrokeWidth = paint.strokeWidth;
 															const shapeOpacity =
-																(customShapeStyles.opacity ?? 1) *
+																(paint.opacity ?? 1) *
 																getSeriesOpacity(bar.key, isHighlighted);
 
 															const {
 																start: y,
-																size: height,
+																size: barHeight,
 																baseline,
 																valueAtStart,
 															} = linearBarSpan(dependentScale, bar.value);
@@ -374,11 +389,12 @@ const BarVertical = () => {
 																		y={y}
 																		tabIndex={0}
 																		width={Math.abs(bar.width)}
-																		height={height}
+																		height={barHeight}
 																		baseline={baseline}
 																		fill={shapeFill}
 																		stroke={shapeStroke}
 																		strokeWidth={shapeStrokeWidth}
+																		strokeOpacity={paint.strokeOpacity}
 																		opacity={shapeOpacity}
 																		fillOpacity={
 																			tooltipData &&
@@ -401,7 +417,7 @@ const BarVertical = () => {
 																		onClick={(event: React.MouseEvent) => {
 																			if (wpEditorFunctions?.shapes?.onClick) {
 																				wpEditorFunctions.shapes.onClick(
-																					data[i],
+																					groupData[i],
 																					bar.key,
 																					defaultColor,
 																					event.currentTarget,
@@ -428,7 +444,7 @@ const BarVertical = () => {
 																			};
 																			showTooltip({
 																				tooltipData: {
-																					...data[i],
+																					...groupData[i],
 																					y: bar.value,
 																					key: bar.key,
 																					customTooltip,
@@ -450,7 +466,7 @@ const BarVertical = () => {
 																				tooltipLeft: bar.x,
 																				tooltipTop: y,
 																				tooltipData: {
-																					...data[i],
+																					...groupData[i],
 																					y: bar.value,
 																					key: bar.key,
 																					customTooltip,
@@ -464,13 +480,18 @@ const BarVertical = () => {
 																		<AnimatedBarLabel
 																			key={`bar-group-label-${groupIndex}-${barGroup.index}-${barGroup.x0}`}
 																			{...positionBarLabel(
-																				{ ...bar, y, height, valueAtStart },
+																				{
+																					...bar,
+																					y,
+																					height: barHeight,
+																					valueAtStart,
+																				},
 																				labels,
 																				labels.labelCutoff,
 																				'vertical',
 																				'single'
 																			)}
-																			dataPoint={data[i]}
+																			dataPoint={groupData[i]}
 																			category={bar.key}
 																			defaultDx={0}
 																			defaultDy={0}
@@ -523,7 +544,7 @@ const BarVertical = () => {
 										<Group>
 											<NetValueLabels
 												items={buildNetValueItemsVerticalGrouped({
-													data,
+													data: groupData,
 													dataRender,
 													dependentScale,
 													groupScale,
@@ -569,13 +590,13 @@ const BarVertical = () => {
 						{independentAxis.active && (
 							<>
 								{groupPositioning.map((groupPos, groupIndex) => {
-									const { data, startX, width } = groupPos;
+									const { data: groupData, startX, width: groupWidth } = groupPos;
 
 									// Create individual scale for this group's axis
 									const groupScale = createGroupBandScale(
-										data.map(getIndependentValue),
-										[startX, startX + width],
-										bar.barGroupPadding
+										groupData.map(getIndependentValue),
+										[startX, startX + groupWidth],
+										barConfig.barGroupPadding
 									);
 
 									return (

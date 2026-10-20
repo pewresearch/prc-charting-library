@@ -1,5 +1,5 @@
 /**
- * @prc/charting-library — Preact Script Module entry.
+ * `@prc/charting-library` — Preact Script Module entry.
  *
  * Compiled to build/view.js as an ES module. Registered with WordPress as the
  * `@prc/charting-library` Script Module and consumed by frontend view scripts

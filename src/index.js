@@ -1,5 +1,5 @@
 /**
- * @prc/charting-library - PRC Charting Library
+ * PRC Charting Library (`@prc/charting-library`).
  *
  * All exports are automatically exposed to window.prcChartingLibrary via webpack output.library.
  *
@@ -9,6 +9,6 @@
  */
 
 // CRITICAL: Must be first import to set publicPath before any chunks load
-import './publicPath'
+import './publicPath';
 
-export * from './lib'
+export * from './lib';

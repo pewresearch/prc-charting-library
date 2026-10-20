@@ -48,10 +48,21 @@
  *       grow right from the left edge; with one, grow out from the zero line
  *       in both directions.
  */
-import { SVGProps, forwardRef, useRef } from 'react';
+import { SVGProps, forwardRef, useEffect, useRef } from 'react';
 import { useSpring, animated } from '@react-spring/web';
 
 import useTransitionTiming from './useTransitionTiming';
+
+/**
+ * Whether a fill points at a paint server (`url(#pattern-id)`) rather than
+ * naming a color. react-spring interpolates `fill` as a color, so a paint
+ * server has to snap — there is no midpoint between a hex and a hatch.
+ *
+ * @param fill Fill value handed to the bar.
+ */
+function isPaintServer(fill: unknown): boolean {
+	return typeof fill === 'string' && fill.startsWith('url(');
+}
 
 export interface AnimatedBarProps extends Omit<SVGProps<SVGRectElement>, 'x' | 'y' | 'width' | 'height' | 'ref'> {
 	x: number;
@@ -127,6 +138,18 @@ const AnimatedBar = forwardRef<SVGRectElement, AnimatedBarProps>(
 		// object exposes all animated values — `from` then only seeds the
 		// initial state for the keys we want to start somewhere other than
 		// their target.
+		// A tween that starts or ends on a paint server has an unparseable
+		// endpoint, and react-spring holds the old value instead of failing
+		// loudly — the bar keeps its previous fill until the next remount.
+		// The ref updates in an effect so the render that *leaves* a pattern
+		// still sees the outgoing value and snaps too.
+		const leavingPaintServerRef = useRef(isPaintServer(fill));
+		const fillSnaps = isPaintServer(fill) || leavingPaintServerRef.current;
+
+		useEffect(() => {
+			leavingPaintServerRef.current = isPaintServer(fill);
+		}, [fill]);
+
 		const springs = useSpring({
 			to: { x, y, width, height, fill, opacity, fillOpacity },
 			from: initialFromRef.current,
@@ -146,7 +169,7 @@ const AnimatedBar = forwardRef<SVGRectElement, AnimatedBarProps>(
 				y={springs.y}
 				width={springs.width}
 				height={springs.height}
-				fill={springs.fill}
+				fill={fillSnaps ? fill : springs.fill}
 				opacity={springs.opacity}
 				fillOpacity={springs.fillOpacity}
 			/>

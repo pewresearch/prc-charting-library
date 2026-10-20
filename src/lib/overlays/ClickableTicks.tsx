@@ -13,16 +13,20 @@ import { Group } from '@visx/group';
 import { Line } from '@visx/shape';
 import React from 'react';
 import { Text, type TextProps } from '../primitives/SvgText';
+import { AxisTitle, type AxisTitleSpec } from './AxisTitle';
 
 type AxisKey = 'independent' | 'dependent';
 
 type ClickableTicksProps = {
 	axisKey: AxisKey;
+	/** Small-multiples panel this axis belongs to, so edits stay in their panel. */
+	panelKey?: string | null;
 	onTickClick?: (
 		axisKey: AxisKey,
 		tickValue: unknown,
 		formattedValue: string | undefined,
-		anchorEl: SVGElement
+		anchorEl: SVGElement,
+		panelKey?: string | null
 	) => void;
 	hideTicks?: boolean;
 	horizontal?: boolean;
@@ -40,10 +44,14 @@ type ClickableTicksProps = {
 	}>;
 	strokeWidth?: number | string;
 	tickLineProps?: Record<string, unknown>;
+	scale?: { range: () => unknown[] };
+	/** Axis label from getAxisProps; visx's own label is turned off. */
+	axisTitle?: AxisTitleSpec | null;
 };
 
 export function ClickableTicks({
 	axisKey,
+	panelKey = null,
 	onTickClick,
 	hideTicks,
 	horizontal,
@@ -55,9 +63,24 @@ export function ClickableTicks({
 	ticks,
 	strokeWidth = 1,
 	tickLineProps,
+	scale,
+	axisTitle,
 }: ClickableTicksProps) {
+	const maxTickLabelFontSize = Math.max(
+		10,
+		...allTickLabelProps.map((props) => (typeof props?.fontSize === 'number' ? props.fontSize : 0))
+	);
+
 	return (
 		<>
+			{axisTitle && scale && (
+				<AxisTitle
+					{...axisTitle}
+					orientation={orientation}
+					range={scale.range()}
+					tickLabelFontSize={maxTickLabelFontSize}
+				/>
+			)}
 			{ticks.map((tick, index) => {
 				const { value, from, to, formattedValue } = tick;
 				const tickLabelProps = (allTickLabelProps[index] ?? {}) as Record<string, unknown>;
@@ -69,7 +92,7 @@ export function ClickableTicks({
 
 				const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
 					if (onTickClick && e.currentTarget) {
-						onTickClick(axisKey, value, formattedValue, e.currentTarget);
+						onTickClick(axisKey, value, formattedValue, e.currentTarget, panelKey);
 					}
 				};
 

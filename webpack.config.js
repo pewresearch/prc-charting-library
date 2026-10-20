@@ -18,7 +18,7 @@
  *      babel  : caller.preactBuild = true       -> automatic JSX runtime
  *                                                  with importSource 'preact'.
  *
- * @prc/charting-utilities is resolved via webpack alias (bundled into both
+ * `@prc/charting-utilities` is resolved via webpack alias (bundled into both
  * builds).
  *
  * IMPORTANT: WordPress VIP serves main bundles from _static optimized paths,
@@ -47,7 +47,7 @@ const chartingUtilitiesAlias = {
  * JSX runtime branch in babel.config.js.
  *
  * @param {boolean} preactBuild
- * @return {import('webpack').RuleSetRule}
+ * @return {import('webpack').RuleSetRule} babel-loader rule for JS/TS sources.
  */
 function babelRule(preactBuild) {
 	return {
@@ -74,8 +74,8 @@ function babelRule(preactBuild) {
  * the JS/TS rule).
  *
  * @param {import('webpack').RuleSetRule[]} rules
- * @param {boolean} preactBuild
- * @return {import('webpack').RuleSetRule[]}
+ * @param {boolean}                         preactBuild
+ * @return {import('webpack').RuleSetRule[]} Rules with the JS/TS rule swapped.
  */
 function withBabelRule(rules, preactBuild) {
 	const replacement = babelRule(preactBuild);

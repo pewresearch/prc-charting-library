@@ -28,8 +28,7 @@ import { animated, useSpring } from '@react-spring/web';
 import usePointGlide, { GlidePoint } from './usePointGlide';
 import { AnimationFamily } from './useAnimationConfig';
 
-export interface AnimatedAreaProps
-	extends Omit<SVGProps<SVGPathElement>, 'd' | 'ref' | 'points'> {
+export interface AnimatedAreaProps extends Omit<SVGProps<SVGPathElement>, 'd' | 'ref' | 'points'> {
 	/** Area vertices in pixel space: `x` plus `y0` (baseline) and `y1` (top). */
 	points: GlidePoint[];
 	/** The `@visx/curve` factory the static chart uses for this series. */
@@ -43,7 +42,8 @@ const accessX = (p: GlidePoint) => p.x;
 const accessY0 = (p: GlidePoint) => p.y0;
 const accessY1 = (p: GlidePoint) => p.y1;
 
-const AnimatedArea = ({ points, curve, family = 'area', ...rest }: AnimatedAreaProps) => {
+const AnimatedArea = ({ points, curve, family = 'area', opacity = 1, ...rest }: AnimatedAreaProps) => {
+	const paintOpacity = typeof opacity === 'number' ? opacity : 1;
 	const glide = usePointGlide<GlidePoint>(points, family);
 	const { isFirstRender, initial } = glide;
 
@@ -92,7 +92,7 @@ const AnimatedArea = ({ points, curve, family = 'area', ...rest }: AnimatedAreaP
 			{({ path }) => (
 				<animated.path
 					{...rest}
-					opacity={entrance.opacity}
+					opacity={entrance.opacity.to((value: number) => value * paintOpacity)}
 					d={glide.toPath((pts) => path(pts))}
 				/>
 			)}

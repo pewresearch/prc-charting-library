@@ -19,17 +19,16 @@ import DOMPurify from 'dompurify';
 
 import { CustomProjection, Graticule } from '@visx/geo';
 import { geoOrthographic, geoDistance } from '@visx/vendor/d3-geo';
-import { scaleLinear, scaleOrdinal, scaleSqrt, scaleThreshold } from '@visx/scale';
-import { LegendThreshold, LegendOrdinal, LegendLinear } from '@visx/legend';
+import { scaleSqrt } from '@visx/scale';
 import { useTooltip } from '@visx/tooltip';
 import { EventType } from '@visx/event/lib/types';
 import { Group } from '@visx/group';
 
 import styled from '@emotion/styled';
 
-import { DataContext } from '@prc/charting-utilities';
-import { BaseConfig } from '@prc/charting-utilities';
 import {
+	DataContext,
+	BaseConfig,
 	useSize,
 	labelFill,
 	getCustomTooltip,
@@ -37,8 +36,6 @@ import {
 	getCustomLabelText,
 	generateElementKey,
 	useWorldCountryData,
-} from '@prc/charting-utilities';
-import {
 	getChartDimensions,
 	getTooltipFormat,
 	getTooltipHeaderFormat,
@@ -46,18 +43,22 @@ import {
 	getSharedProps,
 	createTopologyLoader,
 	getTooltipMapDeemphasisProps,
+	createValueColorScale,
 } from '@prc/charting-utilities';
-import { StyledTooltip, StyledLegend, AnnotationsLayer, DrawingsLayer, ClickableLegend } from '../../overlays';
+import {
+	StyledTooltip,
+	StyledLegend,
+	AnnotationsLayer,
+	DrawingsLayer,
+	ClickableLegend,
+	SeriesPatternDefs,
+} from '../../overlays';
 import { DraggableLabel } from '../../labels';
 import MapGeoPointLayer, { type MapGeoPointLayerProps } from './MapGeoPointLayer';
-import type { Size } from '@prc/charting-utilities';
-import type { FlatData } from '@prc/charting-utilities';
-import type { FeatureShape } from '@prc/charting-utilities';
-import type { TableData } from '@prc/charting-utilities';
+import type { Size, FlatData, FeatureShape, TableData, AnnotationsConfig } from '@prc/charting-utilities';
 import { getDisplayCentroid } from './getDisplayCentroid';
 import { TransitionProvider, useChartTransition, useLabelOpacity, useTransitionTiming } from '../../animation';
 import { animated, useSpring } from '@react-spring/web';
-import type { AnnotationsConfig } from '@prc/charting-utilities';
 
 // Orthographic globes always use a full-world topology — regional topology
 // presets (used by the Robinson `World` map) are not applicable. `locator` is a
@@ -178,10 +179,9 @@ function styleStringToObject(style: string): CSSProperties {
 		const idx = decl.indexOf(':');
 		if (idx === -1) return;
 		const prop = decl.slice(0, idx).trim();
-		const value = decl.slice(idx + 1).trim();
 		if (!prop) return;
 		const camel = prop.replace(/-([a-z])/g, (_m, c) => c.toUpperCase());
-		obj[camel] = value;
+		obj[camel] = decl.slice(idx + 1).trim();
 	});
 	return obj as CSSProperties;
 }
@@ -214,6 +214,8 @@ function domNodeToReact(node: ChildNode, key: string): ReactNode {
  * Render an HTML string as React nodes without `dangerouslySetInnerHTML`.
  * The string is sanitized with DOMPurify, then walked and rebuilt as elements
  * so inline-styled tooltip spans keep their formatting safely.
+ * @param root0
+ * @param root0.html
  */
 function SafeHtml({ html }: { html: string }) {
 	const nodes = useMemo(() => {
@@ -277,7 +279,8 @@ const WorldOrthographic = () => {
 		}>
 	);
 
-	const { layout, colors, dataRender, labels, legend, tooltip, map, shapes, annotations, drawings } = config;
+	const { layout, colors, dataRender, labels, legend, tooltip, map, shapes, annotations, drawings, seriesStyles } =
+		config;
 
 	const topologyKey = map.globe?.topology === 'locator' ? 'locator' : 'full';
 	const topology = TOPOLOGY_LOADERS[topologyKey]();
@@ -344,33 +347,15 @@ const WorldOrthographic = () => {
 
 	const geoPointRows = isGeoPointsMode ? flattenedData : [];
 
-	const thresholdScale = scaleThreshold<number, string>({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors,
+	const valueScale = createValueColorScale({
+		mode: dataRender.mapScale,
+		domain: dataRender.mapScaleDomain,
+		colors,
+		emptyFill: map.pathBackgroundFill,
+		seriesStyles,
+		legend,
+		legendOrder: legend.categories,
 	});
-	const ordinalScale = scaleOrdinal({
-		domain: dataRender.mapScaleDomain as string[],
-		range: colors,
-	});
-	const linearScale = scaleLinear({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors.map((c: string) => {
-			const m = c.match(/^light-dark\(([^,]+),/);
-			return m ? m[1].trim() : c;
-		}),
-	});
-
-	const getFill = (id: number | string, featureData: any, category: string) => {
-		if (!id) return 'transparent';
-		if (!featureData?.[category]) return map.pathBackgroundFill;
-		if (dataRender.mapScale === 'linear') {
-			return linearScale(featureData?.[category]);
-		}
-		if (dataRender.mapScale === 'ordinal') {
-			return ordinalScale(featureData?.[category]);
-		}
-		return thresholdScale(featureData?.[category]);
-	};
 
 	const dragToRotate = map.globe?.dragToRotate ?? true;
 	const autoSpin = map.globe?.autoSpin ?? false;
@@ -490,6 +475,10 @@ const WorldOrthographic = () => {
 
 	const lastPointRef = useRef<{ x: number; y: number } | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
+	let dragCursor = 'default';
+	if (dragToRotate) {
+		dragCursor = isDragging ? 'grabbing' : 'grab';
+	}
 
 	const handlePointerDown = useCallback(
 		(event: ReactPointerEvent<SVGSVGElement>) => {
@@ -621,10 +610,14 @@ const WorldOrthographic = () => {
 					onPointerLeave={endDrag}
 					style={{
 						pointerEvents: tooltip.active || dragToRotate ? 'auto' : 'none',
-						cursor: dragToRotate ? (isDragging ? 'grabbing' : 'grab') : 'default',
+						cursor: dragCursor,
 						touchAction: dragToRotate ? 'none' : undefined,
 					}}
 				>
+					<SeriesPatternDefs
+						seriesStyles={seriesStyles}
+						resolveFill={(name) => seriesStyles?.[name]?.fill ?? valueScale.keyFill(name)}
+					/>
 					<Group role="presentation" top={padding.top} left={padding.left}>
 						<CustomProjection<FeatureShape> {...projectionProps} data={[]}>
 							{({ path }) => (
@@ -665,11 +658,10 @@ const WorldOrthographic = () => {
 							{({ features }) => {
 								const featureMeta = features.map(({ feature, path, projection: proj }, i) => {
 									const { id, properties } = feature;
-									const fill = getFill(id, properties, mapCategory);
+									const fill = valueScale.getFill(properties[mapCategory]);
 									const shapeIdentifier = properties.x || properties.name;
 									const shapeKey = generateElementKey(shapeIdentifier, mapCategory, null);
 									const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-									const shapeFill = customShapeStyles.fill || fill;
 									const centroid = getDisplayCentroid(feature);
 									const isFrontFacing = geoDistance(centroid, viewCenter) <= Math.PI / 2;
 									const coords: [number, number] | null = proj(centroid);
@@ -680,7 +672,6 @@ const WorldOrthographic = () => {
 										id,
 										properties,
 										fill,
-										shapeFill,
 										customShapeStyles,
 										isFrontFacing,
 										i,
@@ -689,8 +680,7 @@ const WorldOrthographic = () => {
 
 								const polygonLayer = featureMeta.map((meta) => {
 									if (!meta) return null;
-									const { feature, path, id, properties, fill, shapeFill, customShapeStyles, i } =
-										meta;
+									const { feature, path, id, properties, fill, customShapeStyles, i } = meta;
 
 									const onPolyMouseMove = (event: EventType) => {
 										if (draggingRef.current) return;
@@ -728,6 +718,11 @@ const WorldOrthographic = () => {
 										id,
 										tooltipData as FlatData
 									);
+									const binPaint = valueScale.getPaint(properties[mapCategory], {
+										stroke,
+										strokeWidth,
+										opacity,
+									});
 									const dataPoint = {
 										...properties,
 										x: properties.x || properties.name,
@@ -736,10 +731,11 @@ const WorldOrthographic = () => {
 										<MapFeature
 											key={`globe-feature-${i}`}
 											d={path || ''}
-											fill={shapeFill}
-											stroke={customShapeStyles.stroke || stroke}
-											opacity={customShapeStyles.opacity ?? opacity}
-											strokeWidth={customShapeStyles.strokeWidth ?? strokeWidth}
+											fill={customShapeStyles.fill || binPaint.fill}
+											stroke={customShapeStyles.stroke || binPaint.stroke}
+											opacity={customShapeStyles.opacity ?? binPaint.opacity}
+											strokeWidth={customShapeStyles.strokeWidth ?? binPaint.strokeWidth}
+											strokeOpacity={customShapeStyles.strokeOpacity ?? binPaint.strokeOpacity}
 											tabIndex={0}
 											style={{
 												cursor: wpEditorFunctions?.shapes ? 'pointer' : 'default',
@@ -792,6 +788,9 @@ const WorldOrthographic = () => {
 													y={coords[1]}
 													dataPoint={dataPoint}
 													category={mapCategory}
+													seriesKey={String(
+														valueScale.styleKey(properties[mapCategory]) ?? ''
+													)}
 													defaultDx={labels.labelPositionDX}
 													defaultDy={labels.labelPositionDY}
 													chartInnerWidth={innerWidth}
@@ -896,58 +895,14 @@ const WorldOrthographic = () => {
 						chartWidth={chartWidth}
 						chartHeight={chartHeight}
 					>
-						{dataRender.mapScale === 'threshold' && (
-							<LegendThreshold
-								{...legendProps}
-								scale={thresholdScale}
-								labelLower={legend.labelLower}
-								labelUpper={legend.labelUpper}
-								labelDelimiter={legend.labelDelimiter}
-							>
-								{(legendLabels: any) => (
-									<ClickableLegend
-										labels={legendLabels}
-										shape={legend.markerStyle}
-										fill={(label) => label.value}
-										shapeStyle={legendProps.shapeStyle}
-										direction={legend.orientation}
-										legendLabelProps={legendProps.legendLabelProps}
-									/>
-								)}
-							</LegendThreshold>
-						)}
-						{dataRender.mapScale === 'ordinal' && (
-							<LegendOrdinal
-								{...legendProps}
-								scale={ordinalScale}
-								domain={legend.categories.length > 0 ? legend.categories : ordinalScale.domain()}
-							>
-								{(legendLabels: any) => (
-									<ClickableLegend
-										labels={legendLabels}
-										shape={legend.markerStyle}
-										fill={(label) => ordinalScale(label.datum)}
-										shapeStyle={legendProps.shapeStyle}
-										direction={legend.orientation}
-										legendLabelProps={legendProps.legendLabelProps}
-									/>
-								)}
-							</LegendOrdinal>
-						)}
-						{dataRender.mapScale === 'linear' && (
-							<LegendLinear {...legendProps} scale={linearScale}>
-								{(legendLabels: any) => (
-									<ClickableLegend
-										labels={legendLabels}
-										shape={legend.markerStyle}
-										fill={(label) => label.value}
-										shapeStyle={legendProps.shapeStyle}
-										direction={legend.orientation}
-										legendLabelProps={legendProps.legendLabelProps}
-									/>
-								)}
-							</LegendLinear>
-						)}
+						<ClickableLegend
+							labels={valueScale.legendItems}
+							shape={legend.markerStyle}
+							fill={(label) => label.value}
+							shapeStyle={legendProps.shapeStyle}
+							direction={legend.orientation}
+							legendLabelProps={legendProps.legendLabelProps}
+						/>
 					</StyledLegend>
 				)}
 				{tooltipOpen && tooltipData && tooltipVisible && (

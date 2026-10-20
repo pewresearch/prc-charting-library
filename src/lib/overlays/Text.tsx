@@ -11,14 +11,15 @@ import type {
 import {
 	contrastLabelFillForLightDark,
 	DataContext,
-	decodeHtmlEntities,
 	DEFAULT_FONT_FAMILY,
 	resolvePanelRect,
+	wrapRichText,
 } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
 import { useContext, useEffect, useRef, useState } from 'react';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
+import { RichTextSpans } from '../primitives/RichText';
 import {
 	getPositioningScale,
 	scalePositionToDisplay,
@@ -26,151 +27,10 @@ import {
 	type PositioningScale,
 } from './getPositioningScale';
 
-// Helper function to break text into lines by word boundaries
-const wordWrap = (text: string, maxWidth: number, fontSize: number, fontFamily: string) => {
-	const canvas = document.createElement('canvas');
-	const context = canvas.getContext('2d');
-	if (!context) return [text];
-
-	context.font = `${fontSize}px ${fontFamily}`;
-
-	// Split by spaces but keep punctuation with words
-	const words = text.split(/(\s+)/);
-	const lines: string[] = [];
-	let currentLine = words[0] || '';
-
-	for (let i = 1; i < words.length; i++) {
-		const word = words[i];
-		const testLine = currentLine + word;
-		const metrics = context.measureText(testLine);
-
-		// Check if this is a space (whitespace)
-		const isWhitespace = /^\s+$/.test(word);
-
-		if (metrics.width > maxWidth && currentLine !== '' && !isWhitespace) {
-			// Don't break on whitespace, push the current line and start a new one
-			lines.push(currentLine);
-			currentLine = word;
-		} else {
-			currentLine = testLine;
-		}
-	}
-
-	lines.push(currentLine);
-	return lines;
-};
-
-// Helper function to parse basic HTML/rich text into tspan elements
-const parseRichText = (text: string) => {
-	// Enhanced regex patterns for formatting including strikethrough, underline, and fill
-	const parts = text.split(
-		/(<b>.*?<\/b>|<i>.*?<\/i>|<strong>.*?<\/strong>|<em>.*?<\/em>|<s>.*?<\/s>|<strike>.*?<\/strike>|<del>.*?<\/del>|<u>.*?<\/u>|<span\s+style="[^"]*">.*?<\/span>|<a\s+href=".*?">.*?<\/a>)/g
-	);
-
-	return parts
-		.map((part, index) => {
-			// Helper function to get tag type
-			const getTagType = (text: string): string => {
-				if (text.match(/<b>|<strong>/)) return 'bold';
-				if (text.match(/<i>|<em>/)) return 'italic';
-				if (text.match(/<s>|<strike>|<del>/)) return 'strikethrough';
-				if (text.match(/<u>/)) return 'underline';
-				if (text.match(/<span\s+style="[^"]*">/)) return 'span';
-				if (text.match(/<a\s+href="/)) return 'link';
-				return 'plain';
-			};
-
-			const tagType = getTagType(part);
-
-			switch (tagType) {
-				case 'bold': {
-					const content = part.replace(/<\/?(?:b|strong)>/g, '');
-					return {
-						text: content,
-						fontWeight: 'bold' as const,
-						key: index,
-					};
-				}
-
-				case 'italic': {
-					const content = part.replace(/<\/?(?:i|em)>/g, '');
-					return {
-						text: content,
-						fontStyle: 'italic' as const,
-						key: index,
-					};
-				}
-
-				case 'strikethrough': {
-					const content = part.replace(/<\/?(?:s|strike|del)>/g, '');
-					return {
-						text: content,
-						textDecoration: 'line-through',
-						key: index,
-					};
-				}
-
-				case 'underline': {
-					const content = part.replace(/<\/?u>/g, '');
-					return {
-						text: content,
-						textDecoration: 'underline',
-						key: index,
-					};
-				}
-
-				case 'span': {
-					const content = part.replace(/<span\s+style="[^"]*">|<\/span>/g, '');
-
-					// Extract multiple style properties
-					const styleMatch = part.match(/style="([^"]*)"/);
-					const styles: any = {};
-
-					if (styleMatch) {
-						const styleString = styleMatch[1];
-
-						// Parse color
-						const colorMatch = styleString.match(/color:\s*([^;]*)/);
-						if (colorMatch) {
-							styles.fill = colorMatch[1].trim();
-						}
-
-						// Parse text-decoration
-						const decorationMatch = styleString.match(/text-decoration:\s*([^;]*)/);
-						if (decorationMatch) {
-							styles.textDecoration = decorationMatch[1].trim();
-						}
-
-						// Parse text-decoration-line (alternative syntax)
-						const decorationLineMatch = styleString.match(/text-decoration-line:\s*([^;]*)/);
-						if (decorationLineMatch) {
-							styles.textDecoration = decorationLineMatch[1].trim();
-						}
-					}
-
-					return {
-						text: content,
-						...styles,
-						key: index,
-					};
-				}
-
-				case 'link': {
-					const href = part.match(/href="(.*?)"/);
-					const content = part.replace(/<a\s+href=".*?">|<\/a>/g, '');
-					return {
-						text: content,
-						link: href ? href[1] : undefined,
-						textDecoration: 'underline',
-						key: index,
-					};
-				}
-
-				default:
-					return { text: part, key: index };
-			}
-		})
-		.filter((part) => part.text.length > 0);
+const dominantBaselineFromAnchor = (verticalAnchor?: string): 'middle' | 'hanging' | 'auto' => {
+	if (verticalAnchor === 'middle') return 'middle';
+	if (verticalAnchor === 'end') return 'hanging';
+	return 'auto';
 };
 
 // SVG Annotation Component
@@ -180,7 +40,6 @@ export const Annotation = ({
 	width,
 	height,
 	layout,
-	chartWidth,
 	/**
 	 * When set (e.g. panel-anchored SM annotations), use shared scale helpers
 	 * instead of width/layout.width. Origin should be 0 if a parent <g> already
@@ -210,15 +69,9 @@ export const Annotation = ({
 		verticalAnchor = 'start',
 		rotation = 0,
 		link,
-		backgroundColor,
-		padding = 4,
-		borderRadius = 3,
 		opacity = 1,
 		maxWidth = 200,
 		textOutline = false,
-		onDrag,
-		onDragStart,
-		onDragEnd,
 	} = annotation;
 
 	const context = useContext(
@@ -313,63 +166,8 @@ export const Annotation = ({
 		}
 	};
 
-	// First parse the rich text to get clean text content
-	const textParts = parseRichText(text);
-	const cleanText = textParts.map((part) => part.text).join('');
-
-	// Then apply word wrapping to the clean text
-	const textLines = wordWrap(cleanText, maxWidth, fontSize, renderedFontFamily);
+	const textLines = wrapRichText(text, maxWidth, fontSize, renderedFontFamily, fontWeight, fontStyle);
 	const lineHeight = fontSize * 1.2;
-
-	// Helper function to distribute rich text parts across lines
-	const distributeRichTextAcrossLines = (lines: string[], parts: any[]) => {
-		const result: any[][] = [];
-		let partIndex = 0;
-		let totalCharIndex = 0;
-
-		for (const line of lines) {
-			const lineParts: any[] = [];
-			let lineCharCount = 0;
-
-			while (partIndex < parts.length && lineCharCount < line.length) {
-				const part = parts[partIndex];
-				const remainingInLine = line.length - lineCharCount;
-				const partStartChar = totalCharIndex;
-				const partEndChar = partStartChar + part.text.length;
-				const lineEndChar = totalCharIndex + remainingInLine;
-
-				if (partEndChar <= lineEndChar) {
-					// Use the entire part
-					lineParts.push(part);
-					lineCharCount += part.text.length;
-					totalCharIndex += part.text.length;
-					partIndex++;
-				} else {
-					// Split the part
-					const charsToUse = remainingInLine;
-					const splitPart = {
-						...part,
-						text: part.text.substring(0, charsToUse),
-					};
-					lineParts.push(splitPart);
-
-					// Update the original part to have remaining text
-					parts[partIndex] = {
-						...part,
-						text: part.text.substring(charsToUse),
-					};
-					lineCharCount += charsToUse;
-					totalCharIndex += charsToUse;
-				}
-			}
-
-			result.push(lineParts);
-		}
-
-		return result;
-	};
-
-	const linesWithRichText = distributeRichTextAcrossLines(textLines, textParts);
 
 	// Determine if draggable
 	const isDraggable = !!wpEditorFunctions?.annotations && !link;
@@ -377,6 +175,13 @@ export const Annotation = ({
 	// Use current drag position or original position
 	const currentX = dragPosition.x;
 	const currentY = dragPosition.y;
+
+	let cursor = 'default';
+	if (isDraggable) {
+		cursor = 'grab';
+	} else if (wpEditorFunctions?.annotations?.onClick || onClick || link) {
+		cursor = 'pointer';
+	}
 
 	// Wrap in link if provided
 	// Note: text is at 0,0 because Group is already translated
@@ -386,24 +191,18 @@ export const Annotation = ({
 			y={0}
 			fontSize={fontSize}
 			fontFamily={renderedFontFamily}
+			fontWeight={fontWeight}
+			fontStyle={fontStyle}
 			fill={fill}
 			textAnchor={textAnchor}
-			dominantBaseline={verticalAnchor === 'middle' ? 'middle' : verticalAnchor === 'end' ? 'hanging' : 'auto'}
+			dominantBaseline={dominantBaselineFromAnchor(verticalAnchor)}
 			{...(textOutline && {
 				stroke: contrastLabelFillForLightDark(fill),
 				strokeWidth: 1,
 				paintOrder: 'stroke',
 			})}
 			style={{
-				cursor: isDraggable
-					? 'grab'
-					: wpEditorFunctions?.annotations?.onClick
-						? 'pointer'
-						: onClick
-							? 'pointer'
-							: link
-								? 'pointer'
-								: 'default',
+				cursor,
 				opacity,
 				userSelect: 'none',
 				pointerEvents: 'all',
@@ -421,19 +220,9 @@ export const Annotation = ({
 				if (link) window.open(link, '_blank');
 			}}
 		>
-			{linesWithRichText.map((lineParts, lineIndex) => (
+			{textLines.map((lineRuns, lineIndex) => (
 				<tspan key={lineIndex} x={0} dy={lineIndex === 0 ? 0 : lineHeight}>
-					{lineParts.map((part) => (
-						<tspan
-							key={part.key}
-							fontWeight={part.fontWeight || fontWeight}
-							fontStyle={part.fontStyle || fontStyle}
-							textDecoration={part.textDecoration}
-							fill={part.fill || (part.link ? '#007cba' : fill)}
-						>
-							{decodeHtmlEntities(part.text)}
-						</tspan>
-					))}
+					<RichTextSpans runs={lineRuns} />
 				</tspan>
 			))}
 		</text>
@@ -465,7 +254,6 @@ export const Annotation = ({
 // Annotations Layer Component
 export const AnnotationsLayer = ({
 	config,
-	width,
 	height,
 	layout,
 	chartWidth, // default to 640px

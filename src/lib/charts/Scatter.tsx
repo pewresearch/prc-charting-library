@@ -23,12 +23,13 @@ import {
 	useRegressionLines,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
-	resolveNodeShapeColors,
+	resolvePointPaint,
+	resolvePointRadius,
+	resolvePointSize,
 	legendCategoryShapeStyle,
 	getMaxAbsColumnValue,
 	getMinPositiveColumnValue,
 	createPointRadiusScale,
-	resolvePointRadius,
 	INERT_SERIES_MASK,
 	markHideKey,
 	seriesMaskShouldHideTooltip,
@@ -103,6 +104,7 @@ const Scatter = () => {
 		layout,
 		colors,
 		nodes,
+		seriesStyles,
 		dataRender,
 		tooltip,
 		labels,
@@ -255,14 +257,14 @@ const Scatter = () => {
 	}, [flattenedData, sizeCategory, nodes.minPointSize, nodes.maxPointSize, nodes.sizeScale]);
 
 	const getPointRadius = useCallback(
-		(d: FlatData) =>
+		(d: FlatData, seriesKey: string, custom?: { pointSize?: number } | null) =>
 			resolvePointRadius({
 				d: d as Record<string, unknown>,
 				sizeCategory,
-				pointSize: nodes.pointSize,
+				pointSize: resolvePointSize(nodes, seriesStyles?.[seriesKey], custom),
 				radiusScale: pointRadiusScale,
 			}),
-		[sizeCategory, nodes.pointSize, pointRadiusScale]
+		[sizeCategory, nodes, seriesStyles, pointRadiusScale]
 	);
 
 	// Pre-compute legend domain to avoid nested ternary in JSX.
@@ -424,9 +426,18 @@ const Scatter = () => {
 	// synthesizes a payload that omits the source columns. Variable sizing needs
 	// the original row, so fall back to matching one on x/y/category.
 	const getTooltipPointRadius = useCallback(() => {
-		if (!tooltipData || !sizeCategory) return nodes.pointSize;
+		if (!tooltipData) {
+			return nodes.pointSize;
+		}
+		const seriesKey = dataRender.groupBreaksCategory
+			? String(tooltipData.colorGroup ?? tooltipData[dataRender.groupBreaksCategory] ?? '')
+			: tooltipData.category;
+		const fallbackSize = resolvePointSize(nodes, seriesKey ? seriesStyles?.[seriesKey] : undefined);
+		if (!sizeCategory) {
+			return fallbackSize;
+		}
 		if (tooltipData[sizeCategory] !== undefined) {
-			return getPointRadius(tooltipData);
+			return getPointRadius(tooltipData, seriesKey ?? '');
 		}
 		const source = tooltipData.category
 			? flattenedData.find(
@@ -434,8 +445,17 @@ const Scatter = () => {
 						getIndependentValue(d) === tooltipData.x && d[tooltipData.category!] === tooltipData.y
 				)
 			: undefined;
-		return source ? getPointRadius(source) : nodes.pointSize;
-	}, [tooltipData, sizeCategory, flattenedData, getIndependentValue, getPointRadius, nodes.pointSize]);
+		return source ? getPointRadius(source, seriesKey ?? '') : fallbackSize;
+	}, [
+		tooltipData,
+		sizeCategory,
+		flattenedData,
+		getIndependentValue,
+		getPointRadius,
+		nodes,
+		seriesStyles,
+		dataRender.groupBreaksCategory,
+	]);
 
 	// Track cursor position for better tooltip positioning
 	const [cursorPosition, setCursorPosition] = useState<{
@@ -568,9 +588,13 @@ const Scatter = () => {
 								// When variable sizing is on, paint largest first so smaller dots stay on top
 								// (same stacking contract as MapBubbleLayer).
 								const renderData = sizeCategory
-									? [...filteredData].sort(
-											(a: FlatData, b: FlatData) => getPointRadius(b) - getPointRadius(a)
-										)
+									? [...filteredData].sort((a: FlatData, b: FlatData) => {
+											const keyFor = (row: FlatData) =>
+												dataRender.groupBreaksCategory
+													? String(row[dataRender.groupBreaksCategory] ?? '')
+													: category;
+											return getPointRadius(b, keyFor(b)) - getPointRadius(a, keyFor(a));
+										})
 									: filteredData;
 								return (
 									<g key={`scatter-category-${i}`}>
@@ -597,21 +621,18 @@ const Scatter = () => {
 												category: categoryKey,
 												dataRender,
 											});
-											const { fill: defaultFill, stroke: defaultStroke } = resolveNodeShapeColors(
+											const pointPaint = resolvePointPaint(
 												nodes,
-												seriesColor
+												seriesColor,
+												seriesStyles?.[categoryKey],
+												customShapeStyles
 											);
-
-											// Apply custom styles with fallbacks
-											const shapeFill = customShapeStyles.fill || defaultFill;
-											const shapeStroke = customShapeStyles.stroke || defaultStroke;
-											const shapeStrokeWidth =
-												customShapeStyles.strokeWidth ?? nodes.pointStrokeWidth;
+											const shapeFill = pointPaint.fill;
+											const shapeStroke = pointPaint.stroke;
+											const shapeStrokeWidth = pointPaint.strokeWidth;
 											const markOpacity =
-												(customShapeStyles.opacity ?? 1) *
-												categoryOpacity *
-												(seriesHidden ? 0 : 1);
-											const pointRadius = getPointRadius(d);
+												(pointPaint.opacity ?? 1) * categoryOpacity * (seriesHidden ? 0 : 1);
+											const pointRadius = getPointRadius(d, categoryKey, customShapeStyles);
 
 											return (
 												<StyledAnimatedCircle
@@ -650,7 +671,7 @@ const Scatter = () => {
 																d[dataRender.groupBreaksCategory]
 															: tooltipData.category !== category)
 															? tooltip.deemphasizeOpacity
-															: 1
+															: (pointPaint.strokeOpacity ?? 1)
 													}
 													fill={shapeFill}
 													fillOpacity={
@@ -662,7 +683,7 @@ const Scatter = () => {
 																d[dataRender.groupBreaksCategory]
 															: tooltipData.category !== category)
 															? tooltip.deemphasizeOpacity
-															: (nodes.pointFillOpacity ?? 1)
+															: (pointPaint.fillOpacity ?? 1)
 													}
 													onBlur={() => {
 														tooltipTimeout = window.setTimeout(() => {
@@ -794,7 +815,7 @@ const Scatter = () => {
 															labels.autoDeclutter && labels.declutterLeaderLines
 																? {
 																		enabled: true,
-																		anchorRadius: getPointRadius(d),
+																		anchorRadius: getPointRadius(d, category),
 																	}
 																: undefined
 														}
@@ -1088,7 +1109,7 @@ const Scatter = () => {
 													labels.autoDeclutter && labels.declutterLeaderLines
 														? {
 																enabled: true,
-																anchorRadius: getPointRadius(d),
+																anchorRadius: getPointRadius(d, category),
 															}
 														: undefined
 												}

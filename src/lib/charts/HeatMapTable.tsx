@@ -1,10 +1,9 @@
 /* eslint-disable max-lines-per-function */
-import { CSSProperties, RefObject, useContext, useMemo, useRef, useState } from 'react';
+import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef, useState } from 'react';
 
 import type { BaseConfig, FlatData, Size, TableData } from '@prc/charting-utilities';
 import {
 	DataContext,
-	DEFAULT_FONT_FAMILY,
 	computeHeatMapTableCells,
 	computeHeatMapTableLayout,
 	createValueColorScale,
@@ -32,6 +31,7 @@ import {
 	ClickableLegend,
 	ClickableTicks,
 	DrawingsLayer,
+	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
 } from '../overlays';
@@ -39,7 +39,6 @@ import { DraggableLabel } from '../labels';
 
 import { AxisLeft, AxisTop } from '@visx/axis';
 import { Group } from '@visx/group';
-import { LegendLinear, LegendOrdinal, LegendThreshold } from '@visx/legend';
 import { scaleBand } from '@visx/scale';
 import { useTooltip } from '@visx/tooltip';
 
@@ -66,6 +65,7 @@ const HeatMapTable = () => {
 		drawings,
 		independentAxis,
 		dependentAxis,
+		seriesStyles,
 	} = config;
 
 	const { width, height, parentClass, padding } = layout;
@@ -75,19 +75,20 @@ const HeatMapTable = () => {
 	const isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
 
 	const flattenedData = useMemo(() => getFlattenedData(data), [data]);
-	const columns = dataRender.categories?.length ? dataRender.categories.map(String) : [];
+	const columns = useMemo(
+		() => (dataRender.categories?.length ? dataRender.categories.map(String) : []),
+		[dataRender.categories]
+	);
 	const getIndependentValue = (d: FlatData) => String(d.x);
 
 	const groupedData = useMemo(() => getGroupedData(flattenedData, dataRender), [flattenedData, dataRender]);
 	const flatRows = useMemo(() => groupedData.flatMap(({ data: rows }) => rows), [groupedData]);
 
 	const showColumnAxis = dependentAxis?.active ?? false;
-	const columnHeaderHeight = showColumnAxis ? (heatConfig?.columnHeaderHeight ?? 48) : 0;
 	const minCellHeight = heatConfig?.minCellHeight ?? 28;
 	const rowCount = flatRows.length;
-	const rowAreaHeight = Math.max(0, innerHeight - columnHeaderHeight);
 	const minRowAreaHeight = rowCount > 0 ? rowCount * minCellHeight : 0;
-	const effectiveRowArea = Math.max(rowAreaHeight, minRowAreaHeight);
+	const effectiveRowArea = Math.max(Math.max(0, innerHeight), minRowAreaHeight);
 
 	const independentScale = useMemo(() => {
 		const allValues = groupedData.flatMap(({ data: rows }) => rows.map(getIndependentValue));
@@ -104,22 +105,16 @@ const HeatMapTable = () => {
 	);
 
 	const cellHeight = independentScale.bandwidth();
-	// Gap between the y-axis line (x=0) and the heat grid — not total label width.
-	// Row labels render in negative x / layout.padding.left, same as horizontal bar charts.
-	const gridInsetX = independentAxis?.active ? (heatConfig?.rowLabelWidth ?? 0) : 0;
 
 	const heatLayout = useMemo(
 		() =>
 			computeHeatMapTableLayout({
 				columnCount: columns.length,
 				availableWidth: Math.max(0, innerWidth),
-				contentHeight: actualContentHeight,
 				cellGap: heatConfig?.cellGap ?? 0,
-				rowLabelWidth: gridInsetX,
-				columnHeaderHeight,
 				minCellWidth: heatConfig?.minCellWidth ?? 40,
 			}),
-		[columns.length, innerWidth, actualContentHeight, heatConfig, gridInsetX, columnHeaderHeight]
+		[columns.length, innerWidth, heatConfig]
 	);
 
 	const columnScale = useMemo(() => {
@@ -152,29 +147,34 @@ const HeatMapTable = () => {
 			map.set(cell.rowKey, existing);
 		});
 		return map;
-	}, [tableCells.cells]);
+	}, [tableCells]);
 
 	const emptyFill = heatConfig?.emptyFill ?? '#F5F5F5';
-	const colorScale = useMemo(
+	const valueScale = useMemo(
 		() =>
 			createValueColorScale({
 				mode: dataRender.mapScale,
 				domain: dataRender.mapScaleDomain,
 				colors: colors?.length ? colors : ['#E8F4FA', '#001E33'],
 				emptyFill,
+				seriesStyles,
+				legend,
+				legendOrder: legend.categories,
 			}),
-		[dataRender.mapScale, dataRender.mapScaleDomain, colors, emptyFill]
+		[dataRender.mapScale, dataRender.mapScaleDomain, colors, emptyFill, seriesStyles, legend]
 	);
 
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 
-	const sharedPropsData = groupedData.length > 0 ? groupedData[0].data : [];
+	const sharedPropsData = useMemo(() => (groupedData.length > 0 ? groupedData[0].data : []), [groupedData]);
 	const {
 		ariaProps,
 		legendProps,
@@ -260,15 +260,10 @@ const HeatMapTable = () => {
 		return tooltip.deemphasizeOpacity ?? 0.35;
 	};
 
-	const showValues = heatConfig?.showValues ?? true;
+	const showValues = !!labels?.active;
 	const cellRadius = heatConfig?.cellRadius ?? 0;
 	const shapesEditable = !!wpEditorFunctions?.shapes?.onClick;
-	const fontFamily = labels?.fontFamily || DEFAULT_FONT_FAMILY;
-	const labelFontSize = labels?.fontSize ?? 12;
-	const headerOffset = columnHeaderHeight;
-
-	const contentTotalHeight = headerOffset + actualContentHeight;
-	const svgHeight = Math.max(height, padding.top + padding.bottom + contentTotalHeight);
+	const svgHeight = Math.max(height, padding.top + padding.bottom + actualContentHeight);
 
 	const rowYByKey = useMemo(() => {
 		const map = new Map<string, number>();
@@ -282,16 +277,19 @@ const HeatMapTable = () => {
 				const rowKey = getIndependentValue(dataPoint);
 				const rowBandY = groupScale(rowKey);
 				if (rowBandY !== undefined) {
-					map.set(rowKey, headerOffset + groupPos.startY + rowBandY);
+					map.set(rowKey, groupPos.startY + rowBandY);
 				}
 			});
 		});
 		return map;
-	}, [groupPositioning, headerOffset]);
+	}, [groupPositioning]);
 
-	const formatCellValue = (value: number | null, columnKey: string, dataPoint: FlatData) => {
+	const formatCellValue = (value: number | string | null, columnKey: string, dataPoint: FlatData) => {
 		if (value === null) {
 			return '';
+		}
+		if (typeof value === 'string') {
+			return value;
 		}
 		const custom = getCustomLabelText(dataPoint, columnKey) || getCustomLabel(dataPoint, columnKey);
 		if (custom) {
@@ -309,19 +307,14 @@ const HeatMapTable = () => {
 			if (y === undefined) {
 				return null;
 			}
-			const { x } = heatLayout.cellPosition(cell.colIndex, y);
-			const defaultColor = colorScale.getFill(cell.value);
-			const groupValue = getGroupValue(cell.dataPoint, dataRender);
-			const shapeKey = generateElementKey(cell.rowKey, cell.columnKey, groupValue);
-			const paint = resolveShapePaint(shapes?.customStyles?.[shapeKey], {
-				fill: defaultColor,
-				opacity: 1,
-			});
-			const fill = paint.fill || defaultColor;
 			const labelText = formatCellValue(cell.value, cell.columnKey, cell.dataPoint);
 			if (!labelText) {
 				return null;
 			}
+			const { x } = heatLayout.cellPosition(cell.colIndex, y);
+			const groupValue = getGroupValue(cell.dataPoint, dataRender);
+			const shapeKey = generateElementKey(cell.rowKey, cell.columnKey, groupValue);
+			const fill = shapes?.customStyles?.[shapeKey]?.fill || valueScale.getFill(cell.value);
 			const cx = x + heatLayout.cellWidth / 2;
 			const cy = y + cellHeight / 2;
 
@@ -332,6 +325,7 @@ const HeatMapTable = () => {
 					y={cy}
 					dataPoint={cell.dataPoint}
 					category={cell.columnKey}
+					seriesKey={String(valueScale.styleKey(cell.value) ?? '')}
 					defaultDx={0}
 					defaultDy={0}
 					chartInnerWidth={innerWidth}
@@ -346,9 +340,7 @@ const HeatMapTable = () => {
 					dx={0}
 					dy={0}
 					textAnchor="middle"
-					verticalAnchor="middle"
-					fontSize={labelFontSize}
-					fontFamily={fontFamily}
+					dominantBaseline="middle"
 				>
 					{labelText}
 				</DraggableLabel>
@@ -371,11 +363,13 @@ const HeatMapTable = () => {
 					pointerEvents: tooltip.active || shapesEditable ? 'auto' : 'none',
 				}}
 			>
+				<SeriesPatternDefs
+					seriesStyles={seriesStyles}
+					resolveFill={(name) => seriesStyles?.[name]?.fill ?? valueScale.keyFill(name)}
+				/>
 				<Group top={padding.top} left={padding.left} role="presentation">
 					{showColumnAxis && (
 						<AxisTop
-							left={gridInsetX}
-							top={columnHeaderHeight}
 							{...dependentAxisProps}
 							tickValues={columns}
 							numTicks={columns.length}
@@ -399,19 +393,21 @@ const HeatMapTable = () => {
 									if (rowBandY === undefined) {
 										return [];
 									}
-									const rowY = headerOffset + startY + rowBandY;
+									const rowY = startY + rowBandY;
 									const rowCells = cellsByRowKey.get(rowKey) || [];
 
 									return rowCells.map((cell) => {
 										const { x } = heatLayout.cellPosition(cell.colIndex, rowY);
-										const defaultColor = colorScale.getFill(cell.value);
+										const defaultColor = valueScale.getFill(cell.value);
 										const groupValue = getGroupValue(cell.dataPoint, dataRender);
 										const shapeKey = generateElementKey(cell.rowKey, cell.columnKey, groupValue);
-										const paint = resolveShapePaint(shapes?.customStyles?.[shapeKey], {
-											fill: defaultColor,
-											opacity: 1,
-										});
+										const customStyle = shapes?.customStyles?.[shapeKey];
+										const paint = resolveShapePaint(
+											customStyle,
+											valueScale.getPaint(cell.value, { opacity: 1 })
+										);
 										const fill = paint.fill || defaultColor;
+										const tooltipFill = customStyle?.fill || defaultColor;
 										const opacity = (paint.opacity ?? 1) * siblingOpacity(shapeKey);
 
 										return (
@@ -426,6 +422,9 @@ const HeatMapTable = () => {
 												ry={cellRadius}
 												fill={fill}
 												opacity={opacity}
+												stroke={paint.stroke}
+												strokeWidth={paint.strokeWidth}
+												strokeOpacity={paint.strokeOpacity}
 												style={{
 													cursor: shapesEditable ? 'pointer' : 'default',
 													pointerEvents: shapesEditable || tooltip.active ? 'all' : undefined,
@@ -437,7 +436,7 @@ const HeatMapTable = () => {
 																	event,
 																	cell.dataPoint,
 																	cell.columnKey,
-																	fill
+																	tooltipFill
 																)
 														: undefined
 												}
@@ -463,9 +462,9 @@ const HeatMapTable = () => {
 								{groupIndex > 0 && (
 									<BreakLine
 										x1={0}
-										x2={heatLayout.totalWidth + padding.right}
-										y1={headerOffset + startY - breakHeight / 2}
-										y2={headerOffset + startY - breakHeight / 2}
+										x2={heatLayout.gridWidth + padding.right}
+										y1={startY - breakHeight / 2}
+										y2={startY - breakHeight / 2}
 										variation={dataRender.groupBreaks?.breakStyles?.variation || 'solid'}
 										stroke={dataRender.groupBreaks?.breakStyles?.stroke || '#A4A4A4'}
 										strokeWidth={dataRender.groupBreaks?.breakStyles?.strokeWidth || 1.4}
@@ -481,7 +480,7 @@ const HeatMapTable = () => {
 							const { data: rows, startY, height: groupHeight } = groupPos;
 							const groupScale = scaleBand<string>({
 								domain: rows.map(getIndependentValue),
-								range: [headerOffset + startY, headerOffset + startY + groupHeight],
+								range: [startY, startY + groupHeight],
 								padding: 0,
 							});
 
@@ -527,48 +526,14 @@ const HeatMapTable = () => {
 
 			{legend.active && (
 				<StyledLegend legend={legend} layoutWidth={width} chartWidth={chartWidth}>
-					{colorScale.mode === 'threshold' && (
-						<LegendThreshold {...legendProps} scale={colorScale.scale}>
-							{(legendLabels) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendThreshold>
-					)}
-					{colorScale.mode === 'ordinal' && (
-						<LegendOrdinal {...legendProps} scale={colorScale.scale} domain={colorScale.domain as string[]}>
-							{(legendLabels) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => colorScale.scale(label.datum)}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendOrdinal>
-					)}
-					{colorScale.mode === 'linear' && (
-						<LegendLinear {...legendProps} scale={colorScale.scale}>
-							{(legendLabels) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendLinear>
-					)}
+					<ClickableLegend
+						labels={valueScale.legendItems}
+						shape={legend.markerStyle}
+						fill={(label) => label.value}
+						shapeStyle={legendProps.shapeStyle}
+						direction={legend.orientation}
+						legendLabelProps={legendProps.legendLabelProps}
+					/>
 				</StyledLegend>
 			)}
 
@@ -612,12 +577,14 @@ const HeatMapTable = () => {
 									typeof tooltipData.y === 'number'
 										? tooltipData.y
 										: Number(tooltipData[category]) || 0;
-								return getTooltipFormat({
+								return getTooltipFormat(
+									{
 										x: tooltipData.x,
 										y: yVal,
 										category,
-										color: tooltipData.fill || colorScale.getFill(yVal),
-										data: tooltipData,},
+										color: tooltipData.fill || valueScale.getFill(yVal),
+										data: tooltipData,
+									},
 									tooltip,
 									dataRender
 								);

@@ -1,11 +1,17 @@
 import type { LegendItemCustomization } from '@prc/charting-utilities';
-import { DataContext, LABEL_OUTLINE_COLOR, DEFAULT_FONT_FAMILY } from '@prc/charting-utilities';
+import {
+	DataContext,
+	LABEL_OUTLINE_COLOR,
+	DEFAULT_FONT_FAMILY,
+	getDirectLabelOffsetFromCustom,
+	hasAuthorDirectLabelOverride,
+	wrapRichText,
+} from '@prc/charting-utilities';
 import { Group } from '@visx/group';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
-
-import { getDirectLabelOffsetFromCustom, hasAuthorDirectLabelOverride, wordWrap } from '@prc/charting-utilities';
+import { RichTextSpans } from '../primitives/RichText';
 
 export interface OnLineSeriesLabelProps {
 	anchorX: number;
@@ -114,12 +120,25 @@ export function OnLineSeriesLabel({
 	const fillColor = isDragging ? '#4A90E2' : (customEntry?.color ?? seriesColor);
 	const showOutline = customEntry?.textOutline !== undefined ? customEntry.textOutline : textOutline;
 
-	const textLines = useMemo(() => {
-		if (!effectiveMaxWidth || effectiveMaxWidth <= 0) {
-			return [displayText];
-		}
-		return wordWrap(displayText, effectiveMaxWidth, effectiveFontSize, effectiveFontFamily);
-	}, [displayText, effectiveMaxWidth, effectiveFontSize, effectiveFontFamily]);
+	const textLines = useMemo(
+		() =>
+			wrapRichText(
+				displayText,
+				effectiveMaxWidth,
+				effectiveFontSize,
+				effectiveFontFamily,
+				effectiveFontWeight,
+				effectiveFontStyle
+			),
+		[
+			displayText,
+			effectiveMaxWidth,
+			effectiveFontSize,
+			effectiveFontFamily,
+			effectiveFontWeight,
+			effectiveFontStyle,
+		]
+	);
 
 	const lineHeight = effectiveFontSize * 1.2;
 
@@ -194,13 +213,15 @@ export function OnLineSeriesLabel({
 				pointerEvents: isEditor ? 'all' : 'none',
 			}}
 		>
-			{textLines.length === 1
-				? displayText
-				: textLines.map((line, index) => (
-						<tspan key={index} x={0} dy={index === 0 ? 0 : lineHeight}>
-							{line}
-						</tspan>
-					))}
+			{textLines.length === 1 ? (
+				<RichTextSpans runs={textLines[0]} />
+			) : (
+				textLines.map((line, index) => (
+					<tspan key={index} x={0} dy={index === 0 ? 0 : lineHeight}>
+						<RichTextSpans runs={line} />
+					</tspan>
+				))
+			)}
 		</text>
 	);
 

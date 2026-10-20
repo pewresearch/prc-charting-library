@@ -86,7 +86,7 @@ const MapBubbleLegend = ({
 	strokeWidth = 1,
 	opacity = 0.7,
 	refValues = [],
-	fillMode = 'category',
+	fillMode: fillModeProp = 'none',
 	layout: layoutProp,
 	labelPosition: labelPositionProp,
 	formatValue = defaultFormat,
@@ -102,6 +102,8 @@ const MapBubbleLegend = ({
 		}>
 	);
 	const legendConfig = context?.config?.legend;
+	// One size key serves every group, so grouped bubbles never take a group fill.
+	const fillMode = context?.config?.dataRender?.groupBreaksCategory ? 'none' : fillModeProp;
 	const customLabels: Record<string, LegendItemCustomization> = legendConfig?.customLabels ?? {};
 	const onLegendItemClick = context?.wpEditorFunctions?.legendItems?.onClick;
 

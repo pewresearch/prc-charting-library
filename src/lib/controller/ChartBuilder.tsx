@@ -62,17 +62,12 @@ const ChartBuilder = () => {
 						<BarVertical />
 					</ChartContainer>
 				);
-			} else {
-				return (
-					<ChartContainer
-						className="cb__chart cb__chart__bar--horizontal"
-						maxWidth={width}
-						minHeight={height}
-					>
-						<BarHorizontal />
-					</ChartContainer>
-				);
 			}
+			return (
+				<ChartContainer className="cb__chart cb__chart__bar--horizontal" maxWidth={width} minHeight={height}>
+					<BarHorizontal />
+				</ChartContainer>
+			);
 		case 'pie':
 			return (
 				<ChartContainer className="cb__chart cb__chart__pie" maxWidth={width} minHeight={height}>
@@ -90,17 +85,16 @@ const ChartBuilder = () => {
 						<StackedBarVertical />
 					</ChartContainer>
 				);
-			} else {
-				return (
-					<ChartContainer
-						className="cb__chart cb__chart__stacked-bar--horizontal"
-						maxWidth={width}
-						minHeight={height}
-					>
-						<StackedBarHorizontal />
-					</ChartContainer>
-				);
 			}
+			return (
+				<ChartContainer
+					className="cb__chart cb__chart__stacked-bar--horizontal"
+					maxWidth={width}
+					minHeight={height}
+				>
+					<StackedBarHorizontal />
+				</ChartContainer>
+			);
 		case 'diverging-bar':
 			if (orientation === 'vertical') {
 				return (
@@ -112,17 +106,16 @@ const ChartBuilder = () => {
 						<DivergingBarVertical />
 					</ChartContainer>
 				);
-			} else {
-				return (
-					<ChartContainer
-						className="cb__chart cb__chart__diverging-bar--horizontal"
-						maxWidth={width}
-						minHeight={height}
-					>
-						<DivergingBarHorizontal />
-					</ChartContainer>
-				);
 			}
+			return (
+				<ChartContainer
+					className="cb__chart cb__chart__diverging-bar--horizontal"
+					maxWidth={width}
+					minHeight={height}
+				>
+					<DivergingBarHorizontal />
+				</ChartContainer>
+			);
 		case 'exploded-bar':
 			return (
 				<ChartContainer className="cb__chart cb__chart__exploded-bar" maxWidth={width} minHeight={height}>

@@ -5,17 +5,23 @@ import * as topojson from 'topojson-client';
 
 //Visx Imports
 import { CustomProjection } from '@visx/geo';
-import { scaleLinear, scaleOrdinal, scaleSqrt, scaleThreshold } from '@visx/scale';
+import { scaleSqrt } from '@visx/scale';
 import { getDisplayCentroid } from './getDisplayCentroid';
-import { LegendThreshold, LegendOrdinal, LegendLinear } from '@visx/legend';
-import { ClickableLegend } from '../../overlays';
+import {
+	ClickableLegend,
+	StyledTooltip,
+	StyledLegend,
+	AnnotationsLayer,
+	DrawingsLayer,
+	SeriesPatternDefs,
+} from '../../overlays';
 import { useTooltip } from '@visx/tooltip';
 import { EventType } from '@visx/event/lib/types';
 import { Zoom } from '@visx/zoom';
 // Local Imports
-import { DataContext } from '@prc/charting-utilities';
-import { BaseConfig } from '@prc/charting-utilities';
 import {
+	DataContext,
+	BaseConfig,
 	useSize,
 	labelFill,
 	getCustomTooltip,
@@ -23,32 +29,22 @@ import {
 	getCustomLabelText,
 	generateElementKey,
 	useWorldCountryData,
-} from '@prc/charting-utilities';
-import {
 	getChartDimensions,
-	getLabelProps,
 	getTooltipFormat,
 	getTooltipHeaderFormat,
-	getTooltipVisible,
 	getLocalPoint,
-	getLegendProps,
 	getSharedProps,
 	createTopologyLoader,
 	getTooltipMapDeemphasisProps,
+	createValueColorScale,
 } from '@prc/charting-utilities';
-import { StyledTooltip, StyledLegend, AnnotationsLayer, DrawingsLayer } from '../../overlays';
 import { DraggableLabel } from '../../labels';
-// Types
-import type { Size } from '@prc/charting-utilities';
-// Internal
-import type { FlatData } from '@prc/charting-utilities';
-import type { FeatureShape } from '@prc/charting-utilities';
-import type { TableData } from '@prc/charting-utilities';
+import type { Size, FlatData, FeatureShape, TableData } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
 
 // STYLED COMPONENTS
 import styled from '@emotion/styled';
-import MapBubbleLayer from './MapBubbleLayer';
+import MapBubbleLayer, { getBubbleGroup, getBubbleGroups } from './MapBubbleLayer';
 import MapGeoPointLayer from './MapGeoPointLayer';
 import MapBubbleLegend from './MapBubbleLegend';
 
@@ -141,15 +137,16 @@ const World = () => {
 	);
 
 	const [isUnZoomed, setIsUnZoomed] = useState(true);
-	const { layout, colors, dataRender, labels, legend, tooltip, map, shapes, annotations, drawings } = config;
+	const { layout, colors, dataRender, labels, legend, tooltip, map, shapes, annotations, drawings, seriesStyles } =
+		config;
 	// SIZE AND LAYOUT
 	const { height, width, parentClass, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
-	let size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
+	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
 
 	const { chartWidth, chartHeight, innerWidth, innerHeight, overflow } = getChartDimensions(size, layout);
 
-	let isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
+	const isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
 
 	const flattenedData = useMemo(
 		() =>
@@ -158,9 +155,6 @@ const World = () => {
 			}, []),
 		[data]
 	);
-	// DATA ACCESSORS
-	const getIndependentValue = (d: FlatData) => d[dataRender.x].toString();
-	const getDependentValue = (d: FlatData) => d[dataRender.y] as number | string;
 	// Countries to exclude from rendering (included in topology for border arcs but not displayed)
 	// Russia is included in East Asia topology for Mongolia/China borders but causes antimeridian artifacts
 	const EXCLUDED_COUNTRIES: Record<string, string[]> = {
@@ -176,35 +170,15 @@ const World = () => {
 		excludeIds: EXCLUDED_COUNTRIES[config.map.topologyRegion as string] || [],
 	});
 
-	const thresholdScale = scaleThreshold<number, string>({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors,
+	const valueScale = createValueColorScale({
+		mode: dataRender.mapScale,
+		domain: dataRender.mapScaleDomain,
+		colors,
+		emptyFill: map.pathBackgroundFill,
+		seriesStyles,
+		legend,
+		legendOrder: legend.categories,
 	});
-
-	const ordinalScale = scaleOrdinal({
-		domain: dataRender.mapScaleDomain as string[],
-		range: colors,
-	});
-
-	const linearScale = scaleLinear({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors.map((c: string) => {
-			const m = c.match(/^light-dark\(([^,]+),/);
-			return m ? m[1].trim() : c;
-		}),
-	});
-
-	const getFill = (id: number | string, data: any, category: string) => {
-		if (!id) return 'transparent';
-		if (!data?.[category]) return '#d7d7d7';
-		if (dataRender.mapScale === 'linear') {
-			return linearScale(data?.[category]);
-		}
-		if (dataRender.mapScale === 'ordinal') {
-			return ordinalScale(data?.[category]);
-		}
-		return thresholdScale(data?.[category]);
-	};
 
 	// Calculate centers accounting for padding to ensure proper centering during resize
 	const centerX = innerWidth / 2 + padding.left;
@@ -239,7 +213,7 @@ const World = () => {
 	const sizeCategory = geoPoints?.sizeCategory || mapCategory;
 
 	const maxDataValue = useMemo(() => {
-		if (!isPointOverlayMode || geoPoints?.fixedRadius != null) return 0;
+		if (!isPointOverlayMode || (geoPoints?.fixedRadius !== null && geoPoints?.fixedRadius !== undefined)) return 0;
 		return Math.max(
 			0,
 			...flattenedData.map((d: FlatData) => {
@@ -262,8 +236,27 @@ const World = () => {
 		[bubbleScaleMaxValue, map.bubble?.minRadius, map.bubble?.maxRadius]
 	);
 
+	const bubbleGroups = useMemo(
+		() =>
+			getBubbleGroups({
+				groupBy: isBubbleMode ? dataRender.groupBreaksCategory : undefined,
+				category: mapCategory,
+				groupOrder: dataRender.groupBreaksCategoryValues,
+				data: flattenedData,
+				colors,
+			}),
+		[
+			isBubbleMode,
+			dataRender.groupBreaksCategory,
+			mapCategory,
+			dataRender.groupBreaksCategoryValues,
+			flattenedData,
+			colors,
+		]
+	);
+
 	// GET SHARED LAYOUT PROPS
-	const { ariaProps, legendProps, tooltipVisible, annotationsVisible, labelProps } = useMemo(
+	const { legendProps, tooltipVisible, annotationsVisible, labelProps } = useMemo(
 		() =>
 			getSharedProps({
 				chartType: 'A map of the world',
@@ -318,6 +311,13 @@ const World = () => {
 						className={zoom.isDragging ? 'dragging' : undefined}
 						style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 					>
+						<SeriesPatternDefs
+							seriesStyles={seriesStyles}
+							resolveFill={(name) =>
+								seriesStyles?.[name]?.fill ??
+								(isBubbleMode ? bubbleGroups.groupFill(name) : valueScale.keyFill(name))
+							}
+						/>
 						<Group role="presentation" top={padding.top} left={padding.left}>
 							<CustomProjection<FeatureShape>
 								projection={projection}
@@ -343,7 +343,7 @@ const World = () => {
 								}
 							>
 								{({ features }) =>
-									features.map(({ feature, path }, i) => (
+									features.map(({ path }, i) => (
 										<Fragment key={`map-feature-${i}`}>
 											<MapFeature
 												key={`map-feature-${i}`}
@@ -388,7 +388,7 @@ const World = () => {
 										const { properties } = feature;
 										const fill = isPointOverlayMode
 											? map.pathBackgroundFill
-											: getFill(id, properties, mapCategory);
+											: valueScale.getFill(properties[mapCategory]);
 										const shapeIdentifier = properties.x || properties.name;
 										const shapeKey = generateElementKey(shapeIdentifier, mapCategory, null);
 										const customShapeStyles = isPointOverlayMode
@@ -450,22 +450,30 @@ const World = () => {
 										const { opacity, stroke, strokeWidth } = isPointOverlayMode
 											? { opacity: 1, stroke: map.pathStroke, strokeWidth: map.pathStrokeWidth }
 											: getTooltipMapDeemphasisProps(tooltip, map, id, tooltipData as FlatData);
+										const binPaint = isPointOverlayMode
+											? { fill: shapeFill, stroke, strokeWidth, opacity }
+											: valueScale.getPaint(properties[mapCategory], {
+													stroke,
+													strokeWidth,
+													opacity,
+												});
 										const dataPoint = { ...properties, x: properties.x || properties.name };
 										return (
 											<MapFeature
 												key={`map-feature-${i}`}
 												d={path || ''}
-												fill={shapeFill}
-												stroke={customShapeStyles.stroke || stroke}
-												opacity={customShapeStyles.opacity ?? opacity}
-												strokeWidth={customShapeStyles.strokeWidth ?? strokeWidth}
+												fill={customShapeStyles.fill || binPaint.fill}
+												stroke={customShapeStyles.stroke || binPaint.stroke}
+												opacity={customShapeStyles.opacity ?? binPaint.opacity}
+												strokeWidth={customShapeStyles.strokeWidth ?? binPaint.strokeWidth}
+												strokeOpacity={
+													customShapeStyles.strokeOpacity ?? binPaint.strokeOpacity
+												}
 												tabIndex={isPointOverlayMode ? -1 : 0}
 												style={{
 													pointerEvents: isPointOverlayMode
 														? 'none'
-														: wpEditorFunctions?.shapes
-															? 'all'
-															: undefined,
+														: wpEditorFunctions?.shapes && 'all',
 												}}
 												onClick={(event: React.MouseEvent) => {
 													if (!isPointOverlayMode && wpEditorFunctions?.shapes?.onClick) {
@@ -485,27 +493,22 @@ const World = () => {
 												onTouchStart={() => {
 													if (!map.zoomActive) return;
 													setIsUnZoomed(false);
-													zoom.dragStart;
 												}}
 												onTouchMove={() => {
 													if (!map.zoomActive) return;
 													setIsUnZoomed(false);
-													zoom.dragMove;
 												}}
 												onTouchEnd={() => {
 													if (!map.zoomActive) return;
 													setIsUnZoomed(false);
-													zoom.dragEnd;
 												}}
 												onMouseDown={() => {
 													if (!map.zoomActive) return;
 													setIsUnZoomed(false);
-													zoom.dragStart;
 												}}
 												onMouseUp={() => {
 													if (!map.zoomActive) return;
 													setIsUnZoomed(false);
-													zoom.dragEnd;
 												}}
 											/>
 										);
@@ -529,7 +532,13 @@ const World = () => {
 												};
 												const isDark =
 													window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-												const contrastSrc = isBubbleMode ? colors[0] : fill;
+												const bubbleGroup = getBubbleGroup(bubbleGroups, properties);
+												const contrastSrc = isBubbleMode
+													? bubbleGroups.groupFill(bubbleGroup ?? '')
+													: fill;
+												const labelSeriesKey = isBubbleMode
+													? (bubbleGroup ?? '')
+													: String(valueScale.styleKey(properties[mapCategory]) ?? '');
 												const bareHex =
 													(isDark
 														? contrastSrc.match(/light-dark\([^,]+,\s*([^)]+)\)/)?.[1]
@@ -542,6 +551,7 @@ const World = () => {
 														y={coords[1]}
 														dataPoint={dataPoint}
 														category={mapCategory}
+														seriesKey={labelSeriesKey}
 														defaultDx={labels.labelPositionDX}
 														defaultDy={labels.labelPositionDY}
 														chartInnerWidth={innerWidth}
@@ -569,6 +579,8 @@ const World = () => {
 													category={mapCategory}
 													bubbleRadiusScale={bubbleRadiusScale}
 													fill={colors[0]}
+													groups={bubbleGroups}
+													seriesStyles={seriesStyles}
 													bubbleConfig={map.bubble}
 													svgRef={svgRef}
 													showTooltip={showTooltip}
@@ -669,7 +681,7 @@ const World = () => {
 									className="button"
 									onClick={() => {
 										setIsUnZoomed(true);
-										zoom.reset;
+										zoom.reset();
 									}}
 								>
 									Reset
@@ -685,58 +697,14 @@ const World = () => {
 							chartWidth={chartWidth}
 							chartHeight={chartHeight}
 						>
-							{dataRender.mapScale === 'threshold' && (
-								<LegendThreshold
-									{...legendProps}
-									scale={thresholdScale}
-									labelLower={legend.labelLower}
-									labelUpper={legend.labelUpper}
-									labelDelimiter={legend.labelDelimiter}
-								>
-									{(legendLabels: any) => (
-										<ClickableLegend
-											labels={legendLabels}
-											shape={legend.markerStyle}
-											fill={(label) => label.value}
-											shapeStyle={legendProps.shapeStyle}
-											direction={legend.orientation}
-											legendLabelProps={legendProps.legendLabelProps}
-										/>
-									)}
-								</LegendThreshold>
-							)}
-							{dataRender.mapScale === 'ordinal' && (
-								<LegendOrdinal
-									{...legendProps}
-									scale={ordinalScale}
-									domain={legend.categories.length > 0 ? legend.categories : ordinalScale.domain()}
-								>
-									{(legendLabels: any) => (
-										<ClickableLegend
-											labels={legendLabels}
-											shape={legend.markerStyle}
-											fill={(label) => ordinalScale(label.datum)}
-											shapeStyle={legendProps.shapeStyle}
-											direction={legend.orientation}
-											legendLabelProps={legendProps.legendLabelProps}
-										/>
-									)}
-								</LegendOrdinal>
-							)}
-							{dataRender.mapScale === 'linear' && (
-								<LegendLinear {...legendProps} scale={linearScale}>
-									{(legendLabels: any) => (
-										<ClickableLegend
-											labels={legendLabels}
-											shape={legend.markerStyle}
-											fill={(label) => label.value}
-											shapeStyle={legendProps.shapeStyle}
-											direction={legend.orientation}
-											legendLabelProps={legendProps.legendLabelProps}
-										/>
-									)}
-								</LegendLinear>
-							)}
+							<ClickableLegend
+								labels={valueScale.legendItems}
+								shape={legend.markerStyle}
+								fill={(label) => label.value}
+								shapeStyle={legendProps.shapeStyle}
+								direction={legend.orientation}
+								legendLabelProps={legendProps.legendLabelProps}
+							/>
 						</StyledLegend>
 					)}
 					{legend.active && isPointOverlayMode && (
@@ -794,12 +762,14 @@ const World = () => {
 								dangerouslySetInnerHTML={{
 									__html: tooltipData.customTooltip
 										? tooltipData.customTooltip
-										: getTooltipFormat({
+										: getTooltipFormat(
+												{
 													x: tooltipData.x,
 													y: tooltipData.y,
 													category: tooltipData.key,
 													color: tooltipData.fill,
-										data: tooltipData,},
+													data: tooltipData,
+												},
 												tooltip,
 												dataRender
 											),

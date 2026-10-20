@@ -1,4 +1,9 @@
-import { generateSegmentKey, resolveSegmentPaint } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/resolveSegmentPaint';
+import { describe, expect, it } from '@jest/globals';
+
+import {
+	generateSegmentKey,
+	resolveSegmentPaint,
+} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolveSegmentPaint';
 
 describe('generateSegmentKey', () => {
 	it('joins start, end, and category with Date ISO strings', () => {
@@ -36,6 +41,32 @@ describe('resolveSegmentPaint', () => {
 			strokeWidth: 4,
 			opacity: 0.25,
 			strokeDasharray: '4,4',
+		});
+	});
+
+	it('applies a segment style over the series style one field at a time', () => {
+		expect(
+			resolveSegmentPaint(
+				{ strokeWidth: 4 },
+				{ stroke: '#456A83', strokeWidth: 3, opacity: 1 },
+				{ stroke: '#1d4ed8', strokeWidth: 1, opacity: 0.6 }
+			)
+		).toEqual({
+			stroke: '#1d4ed8',
+			strokeWidth: 4,
+			opacity: 0.6,
+			strokeDasharray: undefined,
+		});
+	});
+
+	it('applies series strokeOpacity onto the segment', () => {
+		expect(
+			resolveSegmentPaint(undefined, { stroke: '#456A83', strokeWidth: 2, opacity: 1 }, { strokeOpacity: 0.4 })
+		).toMatchObject({
+			stroke: '#456A83',
+			strokeWidth: 2,
+			opacity: 1,
+			strokeOpacity: 0.4,
 		});
 	});
 });

@@ -3,8 +3,7 @@ import { createRoot } from 'react-dom/client';
 // Internal Dependencies
 import ChartBuilderWrapper from './ChartBuilderWrapper';
 // Types
-import { BaseConfig } from '@prc/charting-utilities';
-import { TableData } from '@prc/charting-utilities';
+import { BaseConfig, TableData } from '@prc/charting-utilities';
 
 /**
  * Options form for `ChartBuilderRenderer`. When supplied, the wrapper

@@ -9,6 +9,8 @@
  *
  * The webpack/babel-loader caller flag is the single source of truth for the
  * React/Preact distinction — see webpack.config.js.
+ *
+ * @param {import('@babel/core').ConfigAPI} api Babel config API (`api.caller` reads webpack’s build flag).
  */
 module.exports = function (api) {
 	const isPreactBuild = api.caller((caller) => Boolean(caller) && caller.preactBuild === true);

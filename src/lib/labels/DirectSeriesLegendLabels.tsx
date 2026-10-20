@@ -1,8 +1,7 @@
-import type { BaseConfig, Legend } from '@prc/charting-utilities';
+import type { BaseConfig, Legend, OnLineSeriesDeclutterInput, DeclutterOffset } from '@prc/charting-utilities';
 import { resolveCategoryColor } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
 
-import type { OnLineSeriesDeclutterInput, DeclutterOffset } from '@prc/charting-utilities';
 import { OnLineSeriesLabel } from './OnLineSeriesLabel';
 import { getDeclutterOffset } from './useLabelDeclutter';
 

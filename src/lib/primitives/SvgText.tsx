@@ -10,7 +10,10 @@
  * and angle logic preserved from upstream.
  */
 
+import type { RichTextRun } from '@prc/charting-utilities';
+import { layoutRichTextLines, parseRichText } from '@prc/charting-utilities';
 import { CSSProperties, Ref, SVGAttributes, useMemo } from 'react';
+import { RichTextSpans } from './RichText';
 
 // ---------------------------------------------------------------------------
 // Minimal getStringWidth — same approach as @visx/text's util
@@ -97,36 +100,21 @@ function useText(props: TextProps) {
 
 	const isXOrYNotValid = !isXOrYValid(x) || !isXOrYValid(y);
 
-	const { wordsWithWidth, spaceWidth } = useMemo(() => {
-		const words = children == null ? [] : String(children).split(/(?:(?!\u00A0+)\s+)/);
-		return {
-			wordsWithWidth: words.map((word) => ({
-				word,
-				wordWidth: getStringWidth(word, style) || 0,
-			})),
-			spaceWidth: getStringWidth('\u00A0', style) || 0,
-		};
-	}, [children, style]);
-
 	const wordsByLines = useMemo(() => {
 		if (isXOrYNotValid) return [];
-		if (width || scaleToFit) {
-			return wordsWithWidth.reduce<Array<{ words: string[]; width?: number }>>((result, { word, wordWidth }) => {
-				const currentLine = result[result.length - 1];
-				if (
-					currentLine &&
-					(width == null || scaleToFit || (currentLine.width || 0) + wordWidth + spaceWidth < width)
-				) {
-					currentLine.words.push(word);
-					currentLine.width = (currentLine.width || 0) + wordWidth + spaceWidth;
-				} else {
-					result.push({ words: [word], width: wordWidth });
-				}
-				return result;
-			}, []);
-		}
-		return [{ words: children == null ? [] : String(children).split(/(?:(?!\u00A0+)\s+)/) }];
-	}, [isXOrYNotValid, width, scaleToFit, children, wordsWithWidth, spaceWidth]);
+		const runs = children === null || children === undefined ? [] : parseRichText(String(children));
+		const measure = (run: RichTextRun) =>
+			getStringWidth(run.text, {
+				...style,
+				fontWeight: run.fontWeight ?? style?.fontWeight,
+				fontStyle: run.fontStyle ?? style?.fontStyle,
+			}) || 0;
+		const lines = layoutRichTextLines(runs, scaleToFit ? 0 : (width ?? 0), measure).map((lineRuns) => ({
+			runs: lineRuns,
+			width: lineRuns.reduce((total, run) => total + measure(run), 0),
+		}));
+		return lines.length ? lines : [{ runs: [] as RichTextRun[], width: 0 }];
+	}, [isXOrYNotValid, width, scaleToFit, children, style]);
 
 	const startDy = useMemo(() => {
 		if (isXOrYNotValid) return '';
@@ -139,10 +127,10 @@ function useText(props: TextProps) {
 			return 0;
 		};
 		const cap = parseEm(capHeight);
+		if (verticalAnchor === 'start') return `${cap}em`;
+
 		const lh = parseEm(lineHeight);
 		const n = wordsByLines.length - 1;
-
-		if (verticalAnchor === 'start') return `${cap}em`;
 		if (verticalAnchor === 'middle') return `${(-n / 2) * lh + cap / 2}em`;
 		return `${-n * lh}em`;
 	}, [isXOrYNotValid, verticalAnchor, capHeight, wordsByLines.length, lineHeight]);
@@ -187,7 +175,7 @@ export function Text(props: TextProps) {
 	} = props;
 
 	const { wordsByLines, startDy, transform } = useText(props);
-	const { x, y, fontSize, style } = textProps;
+	const { x, fontSize } = textProps;
 
 	return (
 		<svg
@@ -204,7 +192,7 @@ export function Text(props: TextProps) {
 				<text ref={innerTextRef} transform={transform} {...textProps} textAnchor={textAnchor}>
 					{wordsByLines.map((line, index) => (
 						<tspan key={index} x={x} dy={index === 0 ? startDy : (_lineHeight ?? '1em')}>
-							{line.words.join(' ')}
+							<RichTextSpans runs={line.runs} />
 						</tspan>
 					))}
 				</text>

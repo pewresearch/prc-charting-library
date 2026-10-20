@@ -21,8 +21,17 @@ import {
 	getFlattenedData,
 	getGroupedData,
 	getGroupPositioningPie,
+	resolveShapePaint,
+	resolvePatternFill,
 } from '@prc/charting-utilities';
-import { StyledTooltip, StyledLegend, AnnotationsLayer, DrawingsLayer, ClickableLegend } from '../overlays';
+import {
+	StyledTooltip,
+	StyledLegend,
+	AnnotationsLayer,
+	DrawingsLayer,
+	ClickableLegend,
+	SeriesPatternDefs,
+} from '../overlays';
 import {
 	AnimatedArc,
 	AnimatedPieGroupSeparatorArc,
@@ -31,7 +40,7 @@ import {
 	PieRevealProvider,
 	PIE_FULL_TURN,
 } from '../animation';
-import type { FlatData, Size, BaseConfig, TableData } from '@prc/charting-utilities';
+import type { FlatData, Size, BaseConfig, TableData, CategoryStyle } from '@prc/charting-utilities';
 
 import { Pie as VisxPie } from '@visx/shape';
 import { Group } from '@visx/group';
@@ -60,21 +69,25 @@ const Pie = () => {
 		pie: pieConfigRaw,
 		annotations,
 		drawings,
+		seriesStyles,
 	} = config;
 
 	// Ensure pieConfig has defaults for group properties
-	const pieConfig = {
-		...pieConfigRaw,
-		// Ensure group properties have defaults if not provided
-		groupGapAngle: pieConfigRaw?.groupGapAngle ?? 10, // Explode offset in pixels
-		showGroupArcs: pieConfigRaw?.showGroupArcs ?? false,
-		groupArcStyle: {
-			stroke: '#666666',
-			strokeWidth: 1,
-			strokeDasharray: '4,4',
-			...pieConfigRaw?.groupArcStyle,
-		},
-	};
+	const pieConfig = useMemo(
+		() => ({
+			...pieConfigRaw,
+			// Ensure group properties have defaults if not provided
+			groupGapAngle: pieConfigRaw?.groupGapAngle ?? 10, // Explode offset in pixels
+			showGroupArcs: pieConfigRaw?.showGroupArcs ?? false,
+			groupArcStyle: {
+				stroke: '#666666',
+				strokeWidth: 1,
+				strokeDasharray: '4,4',
+				...pieConfigRaw?.groupArcStyle,
+			},
+		}),
+		[pieConfigRaw]
+	);
 
 	// LAYOUT
 	const { width, height, parentClass, padding } = layout;
@@ -128,6 +141,20 @@ const Pie = () => {
 			}),
 		[flattenedData, colors]
 	);
+	// Slices key their series row by row label: defaults, then series row, then the mark popover.
+	const getSlicePaint = (sliceKey: string, sliceColor: string, custom?: CategoryStyle) => {
+		const paint = resolveShapePaint(
+			custom,
+			{
+				fill: sliceColor,
+				stroke: pieConfig.hasPathStroke ? pieConfig.pathStrokeColor : undefined,
+				strokeWidth: pieConfig.hasPathStroke ? pieConfig.pathStrokeWidth : undefined,
+				opacity: 1,
+			},
+			seriesStyles?.[sliceKey]
+		);
+		return { ...paint, fill: resolvePatternFill(paint, sliceKey) };
+	};
 	// GET SHARED LAYOUT PROPS
 	const { ariaProps, legendProps, tooltipVisible, labelProps, annotationsVisible } = useMemo(
 		() =>
@@ -166,6 +193,9 @@ const Pie = () => {
 					{...ariaProps}
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 				>
+					<defs>
+						<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(key) => colorScale(key)} />
+					</defs>
 					<Group top={top} left={left} role="presentation">
 						{/* Render pie slices - grouped or ungrouped */}
 						{isGrouped ? (
@@ -223,23 +253,17 @@ const Pie = () => {
 															dataRender.categories[0],
 															groupValue
 														);
-														const customShapeStyles =
-															shapes?.customStyles?.[shapeKey] || {};
 														const defaultColor = sliceColor;
-
-														// Apply custom styles with fallbacks
-														const shapeFill = customShapeStyles.fill || defaultColor;
-														const shapeStroke =
-															customShapeStyles.stroke ||
-															(pieConfig.hasPathStroke
-																? pieConfig.pathStrokeColor
-																: undefined);
-														const shapeStrokeWidth =
-															customShapeStyles.strokeWidth ||
-															(pieConfig.hasPathStroke
-																? pieConfig.pathStrokeWidth
-																: undefined);
-														const shapeOpacity = customShapeStyles.opacity ?? 1;
+														const {
+															fill: shapeFill,
+															stroke: shapeStroke,
+															strokeWidth: shapeStrokeWidth,
+															opacity: shapeOpacity,
+														} = getSlicePaint(
+															String(x),
+															sliceColor,
+															shapes?.customStyles?.[shapeKey]
+														);
 
 														const showLabel = hasSpaceForLabel && labels.active;
 
@@ -335,6 +359,7 @@ const Pie = () => {
 																		y={centroidY}
 																		dataPoint={arc.data}
 																		category={dataRender.categories[0]}
+																		seriesKey={String(arc.data.x)}
 																		defaultDx={0}
 																		defaultDy={0}
 																		chartInnerWidth={innerWidth}
@@ -410,19 +435,14 @@ const Pie = () => {
 												dataRender.categories[0],
 												groupValue
 											);
-											const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
 											const sliceColor = colorScale(String(x));
 											const defaultColor = sliceColor;
-
-											// Apply custom styles with fallbacks
-											const shapeFill = customShapeStyles.fill || defaultColor;
-											const shapeStroke =
-												customShapeStyles.stroke ||
-												(pieConfig.hasPathStroke ? pieConfig.pathStrokeColor : undefined);
-											const shapeStrokeWidth =
-												customShapeStyles.strokeWidth ||
-												(pieConfig.hasPathStroke ? pieConfig.pathStrokeWidth : undefined);
-											const shapeOpacity = customShapeStyles.opacity ?? 1;
+											const {
+												fill: shapeFill,
+												stroke: shapeStroke,
+												strokeWidth: shapeStrokeWidth,
+												opacity: shapeOpacity,
+											} = getSlicePaint(String(x), sliceColor, shapes?.customStyles?.[shapeKey]);
 
 											const showLabel = hasSpaceForLabel && labels.active;
 
@@ -508,6 +528,7 @@ const Pie = () => {
 															y={centroidY}
 															dataPoint={arc.data}
 															category={dataRender.categories[0]}
+															seriesKey={String(arc.data.x)}
 															defaultDx={0}
 															defaultDy={0}
 															chartInnerWidth={innerWidth}

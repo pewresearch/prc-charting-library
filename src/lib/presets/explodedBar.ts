@@ -1,5 +1,4 @@
-import { baseConfig } from '@prc/charting-utilities';
-import { BaseConfig as BaseConfigType } from '@prc/charting-utilities';
+import { baseConfig, type BaseConfig as BaseConfigType } from '@prc/charting-utilities';
 import * as palettes from '@prc/charting-utilities';
 
 const explodedBarConfig: BaseConfigType = {

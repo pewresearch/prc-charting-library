@@ -22,6 +22,8 @@ import {
 	positionBarLabel,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveBarPaint,
+	resolvePatternFill,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
 	getLinearValueDataExtent,
@@ -38,6 +40,7 @@ import {
 	BreakLine,
 	ClickableLegend,
 	ClickableTicks,
+	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
 } from '../overlays';
@@ -78,6 +81,7 @@ const StackedBarHorizontal = () => {
 		netValues,
 		annotations,
 		drawings,
+		seriesStyles,
 	} = config;
 
 	// SIZE AND LAYOUT
@@ -122,7 +126,7 @@ const StackedBarHorizontal = () => {
 
 	// SCALES
 	const independentScale = useMemo(() => {
-		const allValues = groupedData.flatMap(({ data }) => data.map(getIndependentValue));
+		const allValues = groupedData.flatMap((group) => group.data.map(getIndependentValue));
 		return scaleBand<string>({
 			domain: allValues,
 			range: [0, innerHeight],
@@ -166,13 +170,15 @@ const StackedBarHorizontal = () => {
 
 	// GET SHARED LAYOUT PROPS
 	// For shared props, we use the first group's data (or flattened if no grouping)
-	const sharedPropsData = groupedData.length > 0 ? groupedData[0].data : [];
+	const sharedPropsData = useMemo(() => (groupedData.length > 0 ? groupedData[0].data : []), [groupedData]);
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 	const {
 		dependentAxisProps,
@@ -231,18 +237,19 @@ const StackedBarHorizontal = () => {
 					{...ariaProps}
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 				>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
 					<Group top={padding.top} left={padding.left} role="presentation">
 						<GridColumns {...dependentGridProps} />
 
 						{/* Render grouped stacked bar charts with breaks */}
 						{groupPositioning.map((groupPos, groupIndex) => {
-							const { group, data, startY, height, breakHeight } = groupPos;
+							const { group, data: groupData, startY, height: groupHeight, breakHeight } = groupPos;
 
 							// Create individual scale for this group with relative positioning (0 to height)
 							// since the Group is already positioned at startY
 							const groupScale = createGroupBandScale(
-								data.map(getIndependentValue),
-								[height, 0],
+								groupData.map(getIndependentValue),
+								[groupHeight, 0],
 								barConfig.barPadding
 							);
 
@@ -257,15 +264,15 @@ const StackedBarHorizontal = () => {
 											strokeWidth={independentGridProps.strokeWidth}
 											strokeOpacity={independentGridProps.strokeOpacity}
 											strokeDasharray={independentGridProps.strokeDasharray}
-											numTicks={data.length}
+											numTicks={groupData.length}
 										/>
 									</Group>
 
 									<Group top={startY}>
 										<BarStackHorizontal
-											data={data}
+											data={groupData}
 											keys={dataRender.categories}
-											height={height}
+											height={groupHeight}
 											y={getIndependentValue}
 											xScale={dependentScale}
 											yScale={groupScale}
@@ -273,7 +280,7 @@ const StackedBarHorizontal = () => {
 										>
 											{(barStacks) => {
 												return barStacks.map((barStack) => {
-													return barStack.bars.map((bar, i) => {
+													return barStack.bars.map((bar) => {
 														const category: string = bar.key;
 														const barData: FlatData = bar.bar.data;
 														const barValue: number =
@@ -303,20 +310,24 @@ const StackedBarHorizontal = () => {
 															dataRender,
 														});
 
-														// Apply custom styles with fallbacks
-														const shapeFill = customShapeStyles.fill || defaultColor;
-														const shapeStroke =
-															customShapeStyles.stroke ||
-															(barConfig.hasRectStroke
-																? barConfig.rectStrokeColor
-																: undefined);
-														const shapeStrokeWidth =
-															customShapeStyles.strokeWidth ||
-															(barConfig.hasRectStroke
-																? barConfig.rectStrokeWidth
-																: undefined);
-														const shapeOpacity =
-															(customShapeStyles.opacity ?? 1) * categoryOpacity;
+														const paint = resolveBarPaint(
+															{
+																fill: defaultColor,
+																stroke: barConfig.hasRectStroke
+																	? barConfig.rectStrokeColor
+																	: undefined,
+																strokeWidth: barConfig.hasRectStroke
+																	? barConfig.rectStrokeWidth
+																	: undefined,
+																opacity: 1,
+															},
+															seriesStyles?.[category],
+															customShapeStyles
+														);
+														const shapeFill = resolvePatternFill(paint, category);
+														const shapeStroke = paint.stroke;
+														const shapeStrokeWidth = paint.strokeWidth;
+														const shapeOpacity = (paint.opacity ?? 1) * categoryOpacity;
 
 														return (
 															<g
@@ -332,6 +343,7 @@ const StackedBarHorizontal = () => {
 																	tabIndex={0}
 																	stroke={shapeStroke}
 																	strokeWidth={shapeStrokeWidth}
+																	strokeOpacity={paint.strokeOpacity}
 																	opacity={shapeOpacity}
 																	style={{
 																		cursor: wpEditorFunctions?.shapes
@@ -477,7 +489,7 @@ const StackedBarHorizontal = () => {
 										<Group top={startY}>
 											<NetValueLabels
 												items={buildNetValueItemsHorizontalStacked({
-													data,
+													data: groupData,
 													dataRender,
 													dependentScale,
 													groupScale,
@@ -498,9 +510,9 @@ const StackedBarHorizontal = () => {
 										<Group top={startY}>
 											<DiffColumn
 												diffColumn={diffColumn}
-												innerHeight={height}
+												innerHeight={groupHeight}
 												innerWidth={innerWidth}
-												flattenedData={data}
+												flattenedData={groupData}
 												scale={groupScale}
 												dataRender={dataRender}
 												labels={labels}
@@ -538,12 +550,12 @@ const StackedBarHorizontal = () => {
 						{independentAxis.active && (
 							<>
 								{groupPositioning.map((groupPos, groupIndex) => {
-									const { data, startY, height } = groupPos;
+									const { data: groupData, startY, height: groupHeight } = groupPos;
 
 									// Create individual scale for this group's axis
 									const groupScale = createGroupBandScale(
-										data.map(getIndependentValue),
-										[startY + height, startY],
+										groupData.map(getIndependentValue),
+										[startY + groupHeight, startY],
 										barConfig.barPadding
 									);
 
@@ -551,8 +563,8 @@ const StackedBarHorizontal = () => {
 										<AxisLeft
 											key={`axis-${groupIndex}`}
 											{...independentAxisProps}
-											tickValues={data.map(getIndependentValue)}
-											numTicks={data.length}
+											tickValues={groupData.map(getIndependentValue)}
+											numTicks={groupData.length}
 											scale={groupScale}
 										/>
 									);

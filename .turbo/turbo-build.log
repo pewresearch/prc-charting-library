@@ -1,49 +1,55 @@
 
-> @prc/charting-library@3.14.1 build
+> @prc/charting-library@3.15.0 build
 > tsc && wp-scripts build
 
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
 editor:
   assets by info 3.57 MiB [1m[32m[immutable][39m[22m
     assets by status [1m[33m2.78 MiB[39m[22m [1m[33m[big][39m[22m
       asset [1m[33m855.js?ver=7ab606d822a7e2e0186d[39m[22m [1m[33m1.57 MiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m
       asset [1m[33m38.js?ver=c6e5b6b0a529b5ccb8ae[39m[22m [1m[33m823 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m
       asset [1m[33m88.js?ver=97f8eeb2988c5211232d[39m[22m [1m[33m416 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m
-    assets by chunk 73.3 KiB (id hint: vendors)
-      asset [1m[32m697.js?ver=499a07a00ccac30d51b8[39m[22m 38.5 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m (id hint: vendors)
-      asset [1m[32m580.js?ver=19273be9159606c8c37d[39m[22m 34.7 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m (id hint: vendors)
+    assets by chunk 72.6 KiB (id hint: vendors)
+      asset [1m[32m764.js?ver=00bd67085ce2345e77dd[39m[22m 37.9 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m (id hint: vendors)
+      asset [1m[32m580.js?ver=47be82eb8af84523a8bc[39m[22m 34.7 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [1m[32m[minimized][39m[22m (id hint: vendors)
     + 36 assets
-  assets by chunk 504 KiB (name: editor)
-    asset [1m[33meditor.js[39m[22m [1m[33m504 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: editor)
+  assets by chunk 511 KiB (name: editor)
+    asset [1m[33meditor.js[39m[22m [1m[33m511 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: editor)
     asset [1m[32meditor.asset.php[39m[22m 222 bytes [1m[32m[emitted][39m[22m (name: editor)
-  Entrypoint [1meditor[39m[22m [1m[33m[big][39m[22m 504 KiB = [1m[32meditor.js[39m[22m 504 KiB [1m[32meditor.asset.php[39m[22m 222 bytes
-  orphan modules 1.29 MiB [1m[33m[orphan][39m[22m 472 modules
+  Entrypoint [1meditor[39m[22m [1m[33m[big][39m[22m 511 KiB = [1m[32meditor.js[39m[22m 511 KiB [1m[32meditor.asset.php[39m[22m 222 bytes
+  orphan modules 1.33 MiB [1m[33m[orphan][39m[22m 491 modules
   runtime modules 9.33 KiB 12 modules
-  built modules 4.92 MiB [1m[33m[built][39m[22m
-    modules by path [1m../../node_modules/[39m[22m 530 KiB 131 modules
-    modules by path [1m./[39m[22m 4.4 MiB
-      json modules 3.4 MiB 32 modules
-      javascript modules 1020 KiB
-        modules by path [1m./src/lib/[39m[22m 377 KiB 21 modules
-        modules by path [1m./src/*.js[39m[22m 640 KiB 2 modules
-        + 1 module
-    + 9 modules
+  built modules 4.93 MiB [1m[33m[built][39m[22m
+    javascript modules 1.52 MiB
+      modules by path [1m../../node_modules/[39m[22m 509 KiB 124 modules
+      modules by path [1m./[39m[22m 1.02 MiB 25 modules
+      + 9 modules
+    json modules 3.4 MiB
+      modules by path [1m./src/lib/data/maps/world/*.json[39m[22m 936 KiB 28 modules
+      modules by path [1m./src/lib/data/maps/usa/*.json[39m[22m 116 KiB
+        [1m./src/lib/data/maps/usa/topology.json[39m[22m 112 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+        [1m./src/lib/data/maps/usa/heatmap.json[39m[22m 4.58 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+      [1m./src/lib/data/maps/usa-counties/topology.json[39m[22m 822 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
+      [1m./src/lib/data/maps/usa-cbsa/topology.json[39m[22m 1.57 MiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
 
   [1m[33mWARNING[39m[22m in [1masset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
   This can impact web performance.
   Assets: 
-    editor.js (504 KiB)
+    editor.js (511 KiB)
     38.js?ver=c6e5b6b0a529b5ccb8ae (823 KiB)
     855.js?ver=7ab606d822a7e2e0186d (1.57 MiB)
     88.js?ver=97f8eeb2988c5211232d (416 KiB)[39m[22m
 
   [1m[33mWARNING[39m[22m in [1mentrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
   Entrypoints:
-    editor (504 KiB)
+    editor (511 KiB)
         editor.js
         editor.asset.php
   [39m[22m
 
-  [1meditor[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 61422 ms
+  [1meditor[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 14928 ms
 
 view:
   assets by info 3.6 MiB [1m[32m[immutable][39m[22m
@@ -52,42 +58,42 @@ view:
       asset [1m[33mview-38.js?ver=27c6c3401bf0937522cd[39m[22m [1m[33m823 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m
       asset [1m[33mview-88.js?ver=24f79306c810295ba33b[39m[22m [1m[33m416 KiB[39m[22m [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m
     assets by chunk 116 KiB (id hint: vendors)
-      asset [1m[32mview-603.js?ver=9c53a65d9d20bb4af3f8[39m[22m 51.7 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m (id hint: vendors)
-      asset [1m[32mview-123.js?ver=59da8bd2d6c1860527eb[39m[22m 38.5 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m (id hint: vendors)
-      asset [1m[32mview-918.js?ver=b4b191782f4c5855e15b[39m[22m 25.7 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m (id hint: vendors)
+      asset [1m[32mview-603.js?ver=f6e30ba31e375604fa3e[39m[22m 51.7 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m (id hint: vendors)
+      asset [1m[32mview-123.js?ver=2ddd8d0c50a2a4965d02[39m[22m 38.5 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m (id hint: vendors)
+      asset [1m[32mview-918.js?ver=e8aa68ee5c4418165301[39m[22m 25.7 KiB [1m[32m[emitted][39m[22m [1m[32m[immutable][39m[22m [javascript module] [1m[32m[minimized][39m[22m (id hint: vendors)
     + 36 assets
-  assets by chunk 624 KiB (name: view)
-    asset [1m[33mview.js[39m[22m [1m[33m624 KiB[39m[22m [1m[32m[emitted][39m[22m [javascript module] [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: view)
+  assets by chunk 638 KiB (name: view)
+    asset [1m[33mview.js[39m[22m [1m[33m637 KiB[39m[22m [1m[32m[emitted][39m[22m [javascript module] [1m[32m[minimized][39m[22m [1m[33m[big][39m[22m (name: view)
     asset [1m[32mview.asset.php[39m[22m 130 bytes [1m[32m[emitted][39m[22m (name: view)
-  Entrypoint [1mview[39m[22m [1m[33m[big][39m[22m 624 KiB = [1m[32mview.js[39m[22m 624 KiB [1m[32mview.asset.php[39m[22m 130 bytes
-  orphan modules 2.01 MiB [1m[33m[orphan][39m[22m 998 modules
+  Entrypoint [1mview[39m[22m [1m[33m[big][39m[22m 638 KiB = [1m[32mview.js[39m[22m 637 KiB [1m[32mview.asset.php[39m[22m 130 bytes
+  orphan modules 2.09 MiB [1m[33m[orphan][39m[22m 1026 modules
   runtime modules 6.4 KiB 11 modules
-  built modules 5.49 MiB [1m[33m[built][39m[22m
-    modules by path [1m../[39m[22m 1.03 MiB 167 modules
-    modules by path [1m./[39m[22m 4.47 MiB
+  built modules 5.53 MiB [1m[33m[built][39m[22m
+    modules by path [1m../[39m[22m 1.04 MiB 162 modules
+    modules by path [1m./[39m[22m 4.49 MiB
       json modules 3.4 MiB
         modules by path [1m./src/lib/data/maps/world/*.json[39m[22m 936 KiB 28 modules
         modules by path [1m./src/lib/data/maps/usa/*.json[39m[22m 116 KiB 2 modules
         [1m./src/lib/data/maps/usa-counties/topology.json[39m[22m 822 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
         [1m./src/lib/data/maps/usa-cbsa/topology.json[39m[22m 1.57 MiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
-      javascript modules 1.06 MiB
-        modules by path [1m./src/lib/[39m[22m 387 KiB 21 modules
-        modules by path [1m./src/*.js[39m[22m 697 KiB 2 modules
+      javascript modules 1.09 MiB
+        modules by path [1m./src/lib/[39m[22m 391 KiB 22 modules
+        modules by path [1m./src/*.js[39m[22m 720 KiB 2 modules
         [1m./node_modules/topojson-client/src/feature.js + 3 modules[39m[22m 3.04 KiB [1m[33m[built][39m[22m [1m[33m[code generated][39m[22m
 
   [1m[33mWARNING[39m[22m in [1masset size limit: The following asset(s) exceed the recommended size limit (244 KiB).
   This can impact web performance.
   Assets: 
-    view.js (624 KiB)
+    view.js (637 KiB)
     view-38.js?ver=27c6c3401bf0937522cd (823 KiB)
     view-855.js?ver=4ab1a59a0577b45672f3 (1.57 MiB)
     view-88.js?ver=24f79306c810295ba33b (416 KiB)[39m[22m
 
   [1m[33mWARNING[39m[22m in [1mentrypoint size limit: The following entrypoint(s) combined asset size exceeds the recommended limit (244 KiB). This can impact web performance.
   Entrypoints:
-    view (624 KiB)
+    view (638 KiB)
         view.js
         view.asset.php
   [39m[22m
 
-  [1mview[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 71648 ms
+  [1mview[39m[22m (webpack 5.106.2) compiled with [1m[33m2 warnings[39m[22m in 16615 ms

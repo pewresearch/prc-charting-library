@@ -1,15 +1,16 @@
 import { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
-import type { MouseEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { DraggableCore } from 'react-draggable';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import {
 	BaseConfig,
 	TableData,
 	Legend,
-	decodeHtmlEntities,
 	DataContext,
 	DEFAULT_FONT_FAMILY,
+	parseRichText,
 } from '@prc/charting-utilities';
+import { RichTextHtml } from '../primitives/RichText';
 
 export type LegendPositioningContext = 'chart' | 'inner';
 
@@ -279,9 +280,28 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 		}
 	};
 
+	const handleChromeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+		// Legend items handle their own keys; only react when the chrome itself has focus.
+		if (event.target !== event.currentTarget) {
+			return;
+		}
+		if (event.key !== 'Enter' && event.key !== ' ') {
+			return;
+		}
+		event.preventDefault();
+		if (wpEditorFunctions?.legend?.onClick) {
+			wpEditorFunctions.legend.onClick(event.currentTarget);
+		}
+	};
+
 	// Use current drag position or original position
 	const currentX = position.x;
 	const currentY = position.y;
+
+	let chromeCursor = 'default';
+	if (isDraggable) {
+		chromeCursor = isDragging ? 'grabbing' : 'grab';
+	}
 
 	const legendContent = (
 		<div
@@ -301,7 +321,10 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 		>
 			<div
 				className="cb__legend__inner"
+				role={isDraggable ? 'button' : undefined}
+				tabIndex={isDraggable ? 0 : undefined}
 				onClick={isDraggable ? handleChromeClick : undefined}
+				onKeyDown={isDraggable ? handleChromeKeyDown : undefined}
 				style={{
 					display: 'flex',
 					flexDirection: 'column',
@@ -310,7 +333,7 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 					border: legend.borderStroke ? `1px solid ${legend.borderStroke || 'transparent'}` : 'none',
 					padding: '10px',
 					pointerEvents: 'auto',
-					cursor: isDraggable ? (isDragging ? 'grabbing' : 'grab') : 'default',
+					cursor: chromeCursor,
 					boxShadow: isDragging ? '0 4px 12px rgba(0,0,0,0.3)' : 'none',
 					userSelect: 'none',
 				}}
@@ -324,7 +347,7 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 							marginBottom: '10px',
 						}}
 					>
-						{decodeHtmlEntities(title)}
+						<RichTextHtml runs={parseRichText(title)} />
 					</div>
 				)}
 				{children}

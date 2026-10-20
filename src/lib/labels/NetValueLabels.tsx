@@ -132,7 +132,6 @@ export function NetValueLabels({ items, side, netValues, labelProps, innerWidth,
 				if (!label) {
 					return null;
 				}
-				const defaultLabel = formatNetValueLabel(item.dataPoint, sideConfig);
 				const labelId = buildChartLabelId(['net-value', side, item.dataPoint.x, i]);
 				const { dx, dy, hidden } = getDeclutterOffset(
 					declutterOffsets,
@@ -143,6 +142,7 @@ export function NetValueLabels({ items, side, netValues, labelProps, innerWidth,
 				if (hidden) {
 					return null;
 				}
+				const defaultLabel = formatNetValueLabel(item.dataPoint, sideConfig);
 				return (
 					<AnimatedBarLabel
 						key={`net-value-${side}-${item.dataPoint.x}-${i}`}

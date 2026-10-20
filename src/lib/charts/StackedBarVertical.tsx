@@ -21,6 +21,8 @@ import {
 	positionBarLabel,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolveBarPaint,
+	resolvePatternFill,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
 	useSize,
@@ -35,6 +37,7 @@ import {
 	BreakLine,
 	ClickableLegend,
 	ClickableTicks,
+	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
 } from '../overlays';
@@ -77,6 +80,7 @@ const StackedBarVertical = () => {
 		annotations,
 		drawings,
 		netValues,
+		seriesStyles,
 	} = config;
 
 	// SIZE AND LAYOUT
@@ -155,13 +159,15 @@ const StackedBarVertical = () => {
 
 	// GET SHARED LAYOUT PROPS
 	// For shared props, we use the first group's data (or flattened if no grouping)
-	const sharedPropsData = groupedData.length > 0 ? groupedData[0].data : [];
+	const sharedPropsData = useMemo(() => (groupedData.length > 0 ? groupedData[0].data : []), [groupedData]);
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 	const {
 		dependentAxisProps,
@@ -224,6 +230,7 @@ const StackedBarVertical = () => {
 					{...ariaProps}
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 				>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
 					<Group top={padding.top} left={padding.left} role="presentation">
 						<GridRows {...dependentGridProps} />
 
@@ -303,20 +310,24 @@ const StackedBarVertical = () => {
 														dataRender,
 													});
 
-													// Apply custom styles with fallbacks
-													const shapeFill = customShapeStyles.fill || defaultColor;
-													const shapeStroke =
-														customShapeStyles.stroke ||
-														(barConfig.hasRectStroke
-															? barConfig.rectStrokeColor
-															: undefined);
-													const shapeStrokeWidth =
-														customShapeStyles.strokeWidth ||
-														(barConfig.hasRectStroke
-															? barConfig.rectStrokeWidth
-															: undefined);
-													const shapeOpacity =
-														(customShapeStyles.opacity ?? 1) * categoryOpacity;
+													const paint = resolveBarPaint(
+														{
+															fill: defaultColor,
+															stroke: barConfig.hasRectStroke
+																? barConfig.rectStrokeColor
+																: undefined,
+															strokeWidth: barConfig.hasRectStroke
+																? barConfig.rectStrokeWidth
+																: undefined,
+															opacity: 1,
+														},
+														seriesStyles?.[category],
+														customShapeStyles
+													);
+													const shapeFill = resolvePatternFill(paint, category);
+													const shapeStroke = paint.stroke;
+													const shapeStrokeWidth = paint.strokeWidth;
+													const shapeOpacity = (paint.opacity ?? 1) * categoryOpacity;
 
 													return (
 														<g
@@ -332,6 +343,7 @@ const StackedBarVertical = () => {
 																tabIndex={0}
 																stroke={shapeStroke}
 																strokeWidth={shapeStrokeWidth}
+																strokeOpacity={paint.strokeOpacity}
 																opacity={shapeOpacity}
 																style={{
 																	cursor: wpEditorFunctions?.shapes

@@ -1,4 +1,4 @@
-import { baseConfig, BaseConfig as BaseConfigType } from '@prc/charting-utilities';
+import { baseConfig, type BaseConfig as BaseConfigType } from '@prc/charting-utilities';
 
 const dotPlotConfig: BaseConfigType = {
 	...baseConfig,

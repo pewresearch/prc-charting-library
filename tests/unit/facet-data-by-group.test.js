@@ -1,3 +1,4 @@
+import { describe, expect, it } from '@jest/globals';
 import { facetDataByGroup } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByGroup';
 
 const demoRows = [

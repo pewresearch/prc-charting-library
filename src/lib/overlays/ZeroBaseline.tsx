@@ -19,7 +19,7 @@ const ZeroBaseline = ({ scale, stroke, strokeWidth, along, length }: ZeroBaselin
 		return null;
 	}
 	const at = scale(0);
-	if (at == null) {
+	if (at === null || at === undefined) {
 		return null;
 	}
 	switch (along) {

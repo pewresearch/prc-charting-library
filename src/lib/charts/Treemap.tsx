@@ -16,10 +16,19 @@ import {
 	getSharedProps,
 	getTooltipFormat,
 	getTooltipHeaderFormat,
+	resolvePatternFill,
+	resolveShapePaint,
 	useSize,
 	DEFAULT_FONT_FAMILY,
 } from '@prc/charting-utilities';
-import { AnnotationsLayer, ClickableLegend, DrawingsLayer, StyledLegend, StyledTooltip } from '../overlays';
+import {
+	AnnotationsLayer,
+	ClickableLegend,
+	DrawingsLayer,
+	SeriesPatternDefs,
+	StyledLegend,
+	StyledTooltip,
+} from '../overlays';
 import { DraggableLabel, wordWrap } from '../labels';
 
 import { Group } from '@visx/group';
@@ -159,6 +168,7 @@ const TreemapChart = () => {
 		treemap: treemapConfig,
 		annotations,
 		drawings,
+		seriesStyles,
 	} = config;
 
 	// LAYOUT
@@ -331,6 +341,32 @@ const TreemapChart = () => {
 		return valueKey;
 	}
 
+	// Leaves key their series row by group, or by leaf name when ungrouped,
+	// the same key the color scale uses.
+	function getSeriesKey(node: any): string {
+		if (groupKey) {
+			return node.data?.group ?? node.parent?.data?.name ?? '';
+		}
+		return node.data?.name ?? '';
+	}
+
+	function getLeafPaint(node: any) {
+		const customShapeStyles = shapes?.customStyles?.[`${node.data.name}::${getShapeCategory(node)}`] || {};
+		const paint = resolveShapePaint(
+			customShapeStyles,
+			{
+				fill: getNodeColor(node),
+				stroke: treemapConfig.rectStroke,
+				strokeWidth: treemapConfig.rectStrokeWidth,
+				opacity: 1,
+			},
+			seriesStyles?.[getSeriesKey(node)]
+		);
+		// A mark opacity replaces the value-scaled opacity, as before series rows.
+		const scaledOpacity = customShapeStyles.opacity === undefined ? getNodeOpacity(node) : 1;
+		return { ...paint, opacity: (paint.opacity ?? 1) * scaledOpacity };
+	}
+
 	function resolveTextFill(shapeFill: string, groupColor: string): string {
 		return getLabelFill({ labelColor: labels.color, seriesColor: groupColor, backgroundHex: shapeFill });
 	}
@@ -349,6 +385,7 @@ const TreemapChart = () => {
 				{...ariaProps}
 				style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 			>
+				<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(key) => colorScale(key)} />
 				<Group top={padding.top} left={padding.left} role="presentation">
 					<VisxTreemap<TreeNode>
 						root={root}
@@ -378,19 +415,11 @@ const TreemapChart = () => {
 
 									// Leaf nodes
 									const defaultColor = getNodeColor(node);
-									const opacity = getNodeOpacity(node);
 									const shapeCategory = getShapeCategory(node);
-
-									// Read custom shape styles from popover customization
-									const shapeKey = `${node.data.name}::${shapeCategory}`;
-									const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-
-									// Apply custom styles with fallbacks
-									const shapeFill = customShapeStyles.fill || defaultColor;
-									const shapeStroke = customShapeStyles.stroke || treemapConfig.rectStroke;
-									const shapeStrokeWidth =
-										customShapeStyles.strokeWidth ?? treemapConfig.rectStrokeWidth;
-									const shapeOpacity = customShapeStyles.opacity ?? opacity;
+									const seriesKey = getSeriesKey(node);
+									const leafPaint = getLeafPaint(node);
+									const shapeFill = leafPaint.fill ?? defaultColor;
+									const shapeOpacity = leafPaint.opacity;
 
 									const textFill = resolveTextFill(shapeFill, defaultColor);
 
@@ -472,7 +501,7 @@ const TreemapChart = () => {
 											<rect
 												width={nodeWidth}
 												height={nodeHeight}
-												fill={shapeFill}
+												fill={resolvePatternFill(leafPaint, seriesKey)}
 												fillOpacity={
 													tooltipData &&
 													tooltipVisible &&
@@ -481,8 +510,8 @@ const TreemapChart = () => {
 														? tooltip.deemphasizeOpacity
 														: shapeOpacity
 												}
-												stroke={shapeStroke}
-												strokeWidth={shapeStrokeWidth}
+												stroke={leafPaint.stroke}
+												strokeWidth={leafPaint.strokeWidth}
 												rx={treemapConfig.borderRadius}
 												ry={treemapConfig.borderRadius}
 												style={{
@@ -558,6 +587,7 @@ const TreemapChart = () => {
 													y={labelBaseY}
 													dataPoint={leafDatum}
 													category={shapeCategory}
+													seriesKey={seriesKey}
 													defaultDx={labels.labelPositionDX || 0}
 													defaultDy={labels.labelPositionDY || 0}
 													chartInnerWidth={innerWidth}
@@ -585,6 +615,7 @@ const TreemapChart = () => {
 													y={valueBaseY}
 													dataPoint={leafDatum}
 													category={`${shapeCategory}__value`}
+													seriesKey={seriesKey}
 													defaultDx={labels.labelPositionDX || 0}
 													defaultDy={labels.labelPositionDY || 0}
 													chartInnerWidth={innerWidth}
@@ -657,9 +688,8 @@ const TreemapChart = () => {
 
 										const defaultColor = getNodeColor(node);
 										const shapeCategory = getShapeCategory(node);
-										const shapeKey = `${node.data.name}::${shapeCategory}`;
-										const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-										const shapeFill = customShapeStyles.fill || defaultColor;
+										const seriesKey = getSeriesKey(node);
+										const shapeFill = getLeafPaint(node).fill ?? defaultColor;
 										const textFill = resolveTextFill(shapeFill, defaultColor);
 
 										const leafDatum =
@@ -722,6 +752,7 @@ const TreemapChart = () => {
 													y={(node.y0 ?? 0) + labelBaseY}
 													dataPoint={leafDatum}
 													category={shapeCategory}
+													seriesKey={seriesKey}
 													defaultDx={labels.labelPositionDX || 0}
 													defaultDy={labels.labelPositionDY || 0}
 													chartInnerWidth={innerWidth}
@@ -748,6 +779,7 @@ const TreemapChart = () => {
 														y={(node.y0 ?? 0) + valueBaseY}
 														dataPoint={leafDatum}
 														category={`${shapeCategory}__value`}
+														seriesKey={seriesKey}
 														defaultDx={labels.labelPositionDX || 0}
 														defaultDy={labels.labelPositionDY || 0}
 														chartInnerWidth={innerWidth}

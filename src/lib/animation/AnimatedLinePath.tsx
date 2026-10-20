@@ -104,8 +104,10 @@ const AnimatedLinePath = ({
 	// visx `<LinePath>` parity: lines default to no fill and round caps.
 	fill = 'none',
 	strokeLinecap = 'round',
+	opacity = 1,
 	...rest
 }: AnimatedLinePathProps) => {
+	const paintOpacity = typeof opacity === 'number' ? opacity : 1;
 	const glide = usePointGlide<GlidePoint>(points, family);
 	const { isFirstRender, initial } = glide;
 
@@ -198,7 +200,7 @@ const AnimatedLinePath = ({
 						fill={fill}
 						strokeLinecap={strokeLinecap}
 						{...drawProps}
-						opacity={entrance.opacity}
+						opacity={entrance.opacity.to((value: number) => value * paintOpacity)}
 						d={glide.toPath((pts) => path(pts))}
 					/>
 				)}

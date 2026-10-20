@@ -1,10 +1,13 @@
-import type { BaseConfig, FlatData, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, CategoryStyle, FlatData, MeasureLabelBBoxOptions, TableData } from '@prc/charting-utilities';
 import {
 	DataContext,
 	getCustomLabelStyle,
 	getLabelOutlineStroke,
 	isLabelVisible,
+	resolveLabelStyle,
 	resolveTextOutlineMode,
+	wordWrap,
+	wrapRichText,
 	DEFAULT_FONT_FAMILY,
 } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
@@ -12,8 +15,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
 
-import type { MeasureLabelBBoxOptions } from '@prc/charting-utilities';
-import { wordWrap } from '@prc/charting-utilities';
+import { RichTextSpans } from '../primitives/RichText';
 import { LabelLeaderLineRegistrar } from './leader-line/LabelLeaderLineRegistrar';
 
 export { wordWrap };
@@ -50,6 +52,19 @@ type DraggableLabelProps = {
 	 * writer's connector is drawn correctly.
 	 */
 	labelId?: string;
+	/**
+	 * Panel or group-break identity. Small multiples pass `panel.key` because
+	 * faceted rows no longer include the group column. Grouped bars still omit
+	 * this and fall back to `dataPoint[groupBreaksCategory]`.
+	 */
+	groupValue?: string | null;
+	/**
+	 * Named seriesStyles key. Maps pass the ordinal bin label because
+	 * `category` is the data column, not the color-domain name.
+	 */
+	seriesKey?: string;
+	/** Resolved series style. Wins over `config.seriesStyles[seriesKey]`, so small-multiples panel rows can layer in. */
+	seriesStyle?: CategoryStyle;
 	children: React.ReactNode;
 	[key: string]: any; // For spreading other props like fill, fontSize, etc.
 };
@@ -67,6 +82,9 @@ export const DraggableLabel = ({
 	maxWidth: maxWidthProp,
 	leaderLine,
 	labelId: labelIdProp,
+	groupValue: groupValueProp,
+	seriesKey: seriesKeyProp,
+	seriesStyle: seriesStyleProp,
 	children,
 	...textProps
 }: DraggableLabelProps) => {
@@ -81,8 +99,7 @@ export const DraggableLabel = ({
 	const wpEditorFunctions = context?.wpEditorFunctions;
 	const config = context?.config;
 
-	// Derive group value for unique key generation when groupBreaksActive
-	const groupValue = useMemo(() => {
+	const inferredGroupValue = useMemo(() => {
 		const dataRender = config?.dataRender;
 		if (
 			dataRender?.groupBreaksActive &&
@@ -93,6 +110,10 @@ export const DraggableLabel = ({
 		}
 		return null;
 	}, [config?.dataRender, dataPoint]);
+	const groupValue = groupValueProp !== undefined ? groupValueProp : inferredGroupValue;
+	const seriesKey =
+		seriesKeyProp === null || seriesKeyProp === undefined || seriesKeyProp === '' ? category : seriesKeyProp;
+	const seriesStyle = seriesStyleProp ?? config?.seriesStyles?.[seriesKey];
 
 	// Generate stable label ID for registration (includes group for uniqueness).
 	// When the caller provides an explicit labelId (e.g. scatter, which encodes
@@ -109,13 +130,8 @@ export const DraggableLabel = ({
 	const dragRef = useRef<SVGGElement>(null);
 
 	// Check visibility - if hidden and not in editor, don't render
-	const visible = isLabelVisible(dataPoint, category);
+	const visible = isLabelVisible(dataPoint, category) && seriesStyle?.labelsVisible !== false;
 	const isInEditor = !!wpEditorFunctions?.labels;
-
-	// If label is hidden and we're not in editor mode, don't render
-	if (!visible && !isInEditor) {
-		return null;
-	}
 
 	// Get custom style overrides
 	const customStyle = getCustomLabelStyle(dataPoint, category);
@@ -248,6 +264,19 @@ export const DraggableLabel = ({
 	const baseFontFamily = safeTextProps.fontFamily || textPropsStyle?.fontFamily;
 	const baseFontSize = safeTextProps.fontSize || textPropsStyle?.fontSize;
 
+	const labelStyle = resolveLabelStyle({
+		defaults: {
+			color: typeof safeTextProps.fill === 'string' ? safeTextProps.fill : undefined,
+			fontWeight: baseFontWeight,
+			fontSize: baseFontSize,
+			fontStyle: safeTextProps.fontStyle || textPropsStyle?.fontStyle,
+			fontFamily: baseFontFamily,
+			maxWidth: maxWidthProp,
+		},
+		series: seriesStyle?.label,
+		custom: customStyle,
+	});
+
 	// Handle click on label to open customization popover.
 	// Uses isDraggingRef (not state) so it reads the value synchronously at
 	// click time, after React has already flushed the drag-stop state update.
@@ -275,8 +304,7 @@ export const DraggableLabel = ({
 	// Determine the fill color - custom style overrides default
 	const getFillColor = () => {
 		if (isDragging) return '#4A90E2';
-		if (customStyle?.color) return customStyle.color;
-		return safeTextProps.fill;
+		return labelStyle.color ?? safeTextProps.fill;
 	};
 
 	// Determine opacity - hidden labels show at reduced opacity in editor
@@ -285,28 +313,34 @@ export const DraggableLabel = ({
 		return 1;
 	};
 
+	const getCursor = () => {
+		if (!isDraggable) return 'default';
+		return isDragging ? 'grabbing' : 'grab';
+	};
+
 	// Get font style and decoration
 	const getFontStyle = () => {
-		if (customStyle?.fontStyle === 'italic') return 'italic';
+		if (labelStyle.fontStyle === 'italic') return 'italic';
 		return safeTextProps.fontStyle || textPropsStyle?.fontStyle || 'normal';
 	};
 
 	const getTextDecoration = () => {
-		if (customStyle?.fontStyle === 'underline') return 'underline';
-		if (customStyle?.fontStyle === 'strikethrough') return 'line-through';
+		if (labelStyle.fontStyle === 'underline') return 'underline';
+		if (labelStyle.fontStyle === 'strikethrough') return 'line-through';
 		return safeTextProps.textDecoration || textPropsStyle?.textDecoration || 'none';
 	};
 
 	// Get maxWidth for text wrapping — per-datum customStyle overrides caller-provided default
-	const maxWidth = customStyle?.maxWidth || maxWidthProp || 0;
-	const effectiveFontSize = customStyle?.fontSize || baseFontSize || 12;
-	const effectiveFontFamily = customStyle?.fontFamily || baseFontFamily || DEFAULT_FONT_FAMILY;
+	const maxWidth = labelStyle.maxWidth || 0;
+	const effectiveFontSize = labelStyle.fontSize || 12;
+	const effectiveFontFamily = labelStyle.fontFamily || DEFAULT_FONT_FAMILY;
 
 	// Calculate wrapped lines if maxWidth is set
 	const textLines = useMemo(() => {
-		const textContent = String(children);
-		if (!maxWidth || maxWidth <= 0) return [textContent];
-		return wordWrap(textContent, maxWidth, effectiveFontSize, effectiveFontFamily);
+		if (typeof children !== 'string' && typeof children !== 'number') {
+			return null;
+		}
+		return wrapRichText(String(children), maxWidth, effectiveFontSize, effectiveFontFamily);
 	}, [children, maxWidth, effectiveFontSize, effectiveFontFamily]);
 
 	const lineHeight = effectiveFontSize * 1.2;
@@ -314,7 +348,7 @@ export const DraggableLabel = ({
 	const resolvedFill = getFillColor();
 	// Per-label override wins when explicitly set (true OR false); otherwise
 	// inherit the chart-level labels.textOutline toggle.
-	const textOutline = customStyle?.textOutline ?? !!config?.labels?.textOutline;
+	const textOutline = labelStyle.textOutline ?? !!config?.labels?.textOutline;
 	const outlineMode = resolveTextOutlineMode(config?.labels ?? {}, config?.layout?.type);
 	const outlineStroke = textOutline ? getLabelOutlineStroke(String(resolvedFill), outlineMode) : undefined;
 
@@ -325,6 +359,13 @@ export const DraggableLabel = ({
 	const leaderAnchorX = leaderLine?.anchorX ?? x;
 	const leaderAnchorY = leaderLine?.anchorY ?? y;
 
+	// Hidden labels stay mounted in the editor at reduced opacity so authors can
+	// bring them back; on the frontend they render nothing. The check sits below
+	// the hooks so every render calls them in the same order.
+	if (!visible && !isInEditor) {
+		return null;
+	}
+
 	const textElement = (
 		<text
 			ref={textRef}
@@ -332,7 +373,7 @@ export const DraggableLabel = ({
 			y={0}
 			{...safeTextProps}
 			fill={resolvedFill}
-			fontWeight={customStyle?.fontWeight || baseFontWeight}
+			fontWeight={labelStyle.fontWeight || baseFontWeight}
 			fontSize={effectiveFontSize}
 			fontFamily={effectiveFontFamily}
 			fontStyle={getFontStyle()}
@@ -345,18 +386,20 @@ export const DraggableLabel = ({
 			})}
 			onClick={handleClick}
 			style={{
-				cursor: isDraggable ? (isDragging ? 'grabbing' : 'grab') : 'default',
+				cursor: getCursor(),
 				userSelect: 'none',
 				pointerEvents: isDraggable ? 'all' : 'none',
 			}}
 		>
-			{textLines.length === 1
-				? children
-				: textLines.map((line, index) => (
-						<tspan key={index} x={0} dy={index === 0 ? 0 : lineHeight}>
-							{line}
-						</tspan>
-					))}
+			{!textLines && children}
+			{textLines?.length === 1 && <RichTextSpans runs={textLines[0]} />}
+			{textLines &&
+				textLines.length > 1 &&
+				textLines.map((line, index) => (
+					<tspan key={index} x={0} dy={index === 0 ? 0 : lineHeight}>
+						<RichTextSpans runs={line} />
+					</tspan>
+				))}
 		</text>
 	);
 
@@ -402,7 +445,7 @@ export const DraggableLabel = ({
 			text={String(children)}
 			fontSize={effectiveFontSize}
 			fontFamily={effectiveFontFamily}
-			fontWeight={customStyle?.fontWeight || baseFontWeight}
+			fontWeight={labelStyle.fontWeight || baseFontWeight}
 			maxWidth={maxWidth || undefined}
 			textAnchor={(safeTextProps.textAnchor as MeasureLabelBBoxOptions['textAnchor']) ?? 'middle'}
 			dominantBaseline={

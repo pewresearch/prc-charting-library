@@ -1,4 +1,4 @@
-import { ChartBuilderWrapper, ChartBuilderTextWrapper, baseConfig } from '../lib';
+import { ChartBuilderWrapper, ChartBuilderTextWrapper } from '../lib';
 import pieConfig from '../lib/presets/pie';
 import lineConfig from '../lib/presets/line';
 import scatterConfig from '../lib/presets/scatter';

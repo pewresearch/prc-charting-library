@@ -1,4 +1,4 @@
-import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef } from 'react';
+import { CSSProperties, RefObject, useContext, useMemo, useRef } from 'react';
 
 // TYPES & UTILITIES
 import type { BaseConfig, Size, TableData } from '@prc/charting-utilities';
@@ -19,14 +19,21 @@ import {
 	createTopologyLoader,
 	getTooltipMapDeemphasisProps,
 	useStateGridData,
+	createValueColorScale,
 } from '@prc/charting-utilities';
 
 import { Group } from '@visx/group';
-import { scaleLinear, scaleOrdinal, scaleThreshold } from '@visx/scale';
+import { scaleLinear } from '@visx/scale';
 import { HeatmapRect } from '@visx/heatmap';
 import { useTooltip } from '@visx/tooltip';
-import { LegendLinear, LegendOrdinal, LegendThreshold } from '@visx/legend';
-import { StyledTooltip, StyledLegend, AnnotationsLayer, DrawingsLayer, ClickableLegend } from '../../overlays';
+import {
+	StyledTooltip,
+	StyledLegend,
+	AnnotationsLayer,
+	DrawingsLayer,
+	ClickableLegend,
+	SeriesPatternDefs,
+} from '../../overlays';
 import { DraggableLabel } from '../../labels';
 import { EventType } from '@visx/event/lib/types';
 
@@ -56,9 +63,10 @@ const BlockUSA = () => {
 	// Suspense-compatible resource loading
 	const states = loadHeatmap();
 
-	const { layout, colors, dataRender, labels, legend, tooltip, shapes, annotations, drawings, map } = config;
+	const { layout, colors, dataRender, labels, legend, tooltip, shapes, annotations, drawings, map, seriesStyles } =
+		config;
 	// SIZE AND LAYOUT
-	const {parentClass, padding, width, height } = layout;
+	const { parentClass, padding, width, height } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
 	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
 
@@ -66,10 +74,6 @@ const BlockUSA = () => {
 	const isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
 
 	const mergedData = useStateGridData({ grid: states, rows: data });
-
-	const getDependentValue = useCallback((d: FlatData) => d[dataRender.y] as number, [dataRender]);
-
-	const getIndependentValue = useCallback((d: FlatData) => d[dataRender.x] as string, [dataRender]);
 
 	// Grid dimensions: 13 columns (indices 0-12, domain 0-12.6) × 8 rows (indices 0-7, domain 0-7.4)
 	// The aspect ratio ensures the map maintains correct proportions when scaling
@@ -112,35 +116,15 @@ const BlockUSA = () => {
 		[responsiveInnerHeight]
 	);
 
-	const thresholdScale = scaleThreshold<number, string>({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors,
+	const valueScale = createValueColorScale({
+		mode: dataRender.mapScale,
+		domain: dataRender.mapScaleDomain,
+		colors,
+		emptyFill: map.pathBackgroundFill,
+		seriesStyles,
+		legend,
+		legendOrder: legend.categories,
 	});
-
-	const ordinalScale = scaleOrdinal({
-		domain: dataRender.mapScaleDomain as string[],
-		range: colors,
-	});
-
-	const linearScale = scaleLinear({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors.map((c: string) => {
-			const m = c.match(/^light-dark\(([^,]+),/);
-			return m ? m[1].trim() : c;
-		}),
-	});
-
-	const getFill = (id: number | string, data: any, category: string) => {
-		if (!id) return 'transparent';
-		if (!data?.[category]) return '#d7d7d7';
-		if (dataRender.mapScale === 'linear') {
-			return linearScale(data?.[category]);
-		}
-		if (dataRender.mapScale === 'ordinal') {
-			return ordinalScale(data?.[category]);
-		}
-		return thresholdScale(data?.[category]);
-	};
 
 	// GET SHARED LAYOUT PROPS
 	const { ariaProps, legendProps, tooltipVisible, labelProps, annotationsVisible } = useMemo(
@@ -179,6 +163,10 @@ const BlockUSA = () => {
 				{...ariaProps}
 				style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 			>
+				<SeriesPatternDefs
+					seriesStyles={seriesStyles}
+					resolveFill={(name) => seriesStyles?.[name]?.fill ?? valueScale.keyFill(name)}
+				/>
 				<Group top={padding.top} left={padding.left} role="presentation">
 					<HeatmapRect
 						data={mergedData}
@@ -209,20 +197,20 @@ const BlockUSA = () => {
 							const category = dataRender.categories[0];
 
 							const getMouseHandlers = (bin: HeatmapBin) => {
-								const { bin: data, x, y } = bin;
-								const fill = getFill(data.id, data, category);
+								const { bin: binData } = bin;
+								const fill = valueScale.getFill(binData[category]);
 								return {
 									onMouseMove: (event: EventType) => {
-										if (data[category] === undefined) return;
+										if (binData[category] === undefined) return;
 										if (tooltipTimeout) clearTimeout(tooltipTimeout);
 										if (!svgRef.current) return;
 										const eventSvgCoords = getLocalPoint(svgRef.current, event) || { x: 0, y: 0 };
-										const { body: _mapTip, header: _mapHdr } = getCustomTooltip(data, category);
+										const { body: _mapTip, header: _mapHdr } = getCustomTooltip(binData, category);
 										showTooltip({
 											tooltipData: {
-												x: data.name,
-												id: data.id,
-												y: data[category],
+												x: binData.name,
+												id: binData.id,
+												y: binData[category],
 												category,
 												fill,
 												customTooltip: _mapTip,
@@ -244,35 +232,51 @@ const BlockUSA = () => {
 								<>
 									{/* Layer 1: All rects */}
 									{allBins.map((bin: HeatmapBin) => {
-										const { row, column, width, height, x, y, bin: data } = bin;
-										const fill = getFill(data.id, data, category);
+										const {
+											row,
+											column,
+											width: rectWidth,
+											height: rectHeight,
+											x,
+											y,
+											bin: binData,
+										} = bin;
+										const fill = valueScale.getFill(binData[category]);
 										const { opacity, stroke, strokeWidth } = getTooltipMapDeemphasisProps(
 											tooltip,
 											map,
-											data.id,
+											binData.id,
 											tooltipData as FlatData
 										);
 										const { onMouseMove, onMouseLeave } = getMouseHandlers(bin);
+										const binPaint = valueScale.getPaint(binData[category], {
+											stroke,
+											strokeWidth,
+											opacity,
+										});
 
 										// Shape customization via popover
-										const shapeIdentifier = data.x || data.id;
+										const shapeIdentifier = binData.x || binData.id;
 										const shapeKey = generateElementKey(shapeIdentifier, category, null);
 										const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-										const shapeFill = customShapeStyles.fill || fill;
-										const shapeStroke = customShapeStyles.stroke || stroke;
-										const shapeStrokeWidth = customShapeStyles.strokeWidth ?? strokeWidth;
-										const shapeOpacity = customShapeStyles.opacity ?? opacity;
+										const shapeFill = customShapeStyles.fill || binPaint.fill;
+										const shapeStroke = customShapeStyles.stroke || binPaint.stroke;
+										const shapeStrokeWidth = customShapeStyles.strokeWidth ?? binPaint.strokeWidth;
+										const shapeOpacity = customShapeStyles.opacity ?? binPaint.opacity;
 
 										return (
 											<rect
 												key={`heatmap-rect-${row}-${column}`}
 												className="visx-heatmap-rect"
-												width={width}
-												height={height}
+												width={rectWidth}
+												height={rectHeight}
 												x={x}
 												y={y}
 												stroke={shapeStroke}
 												strokeWidth={shapeStrokeWidth}
+												strokeOpacity={
+													customShapeStyles.strokeOpacity ?? binPaint.strokeOpacity
+												}
 												opacity={shapeOpacity}
 												fill={shapeFill}
 												tabIndex={0}
@@ -283,8 +287,8 @@ const BlockUSA = () => {
 												onClick={(event: React.MouseEvent) => {
 													if (wpEditorFunctions?.shapes?.onClick) {
 														const dataPoint = {
-															...data,
-															x: data.x || data.id,
+															...binData,
+															x: binData.x || binData.id,
 														};
 														wpEditorFunctions.shapes.onClick(
 															dataPoint,
@@ -306,24 +310,31 @@ const BlockUSA = () => {
                       always appear on top in SVG paint order */}
 									{labels.active &&
 										allBins.map((bin: HeatmapBin) => {
-											const { row, column, width, height, x, y, bin: data } = bin;
-											const fill = getFill(data.id, data, category);
-											const { onMouseMove, onMouseLeave } = getMouseHandlers(bin);
+											const {
+												row,
+												column,
+												width: rectWidth,
+												height: rectHeight,
+												x,
+												y,
+												bin: binData,
+											} = bin;
+											const fill = valueScale.getFill(binData[category]);
 
-											const shapeIdentifier = data.x || data.id;
+											const shapeIdentifier = binData.x || binData.id;
 											const shapeKey = generateElementKey(shapeIdentifier, category, null);
 											const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
 											const shapeFill = customShapeStyles.fill || fill;
 
-											const customLabelText = getCustomLabelText(data, category);
-											const customLabel = customLabelText || getCustomLabel(data, category);
-											const labelText = customLabel || data.id;
+											const customLabelText = getCustomLabelText(binData, category);
+											const customLabel = customLabelText || getCustomLabel(binData, category);
+											const labelText = customLabel || binData.id;
 
-											const cx = x + width / 2;
-											const cy = y + height / 2;
+											const cx = x + rectWidth / 2;
+											const cy = y + rectHeight / 2;
 											const dataPoint = {
-												...data,
-												x: data.x || data.id,
+												...binData,
+												x: binData.x || binData.id,
 											};
 
 											return (
@@ -333,11 +344,12 @@ const BlockUSA = () => {
 													y={cy}
 													dataPoint={dataPoint}
 													category={category}
+													seriesKey={String(valueScale.styleKey(binData[category]) ?? '')}
 													defaultDx={0}
 													defaultDy={0}
 													chartInnerWidth={innerWidth}
 													chartInnerHeight={responsiveInnerHeight}
-													defaultLabel={data.id}
+													defaultLabel={binData.id}
 													fill={getLabelFill({
 														labelColor: labels.color as
 															| 'contrast'
@@ -390,58 +402,14 @@ const BlockUSA = () => {
 					chartWidth={chartWidth}
 					chartHeight={responsiveChartHeight}
 				>
-					{dataRender.mapScale === 'threshold' && (
-						<LegendThreshold
-							{...legendProps}
-							scale={thresholdScale}
-							labelLower={legend.labelLower}
-							labelUpper={legend.labelUpper}
-							labelDelimiter={legend.labelDelimiter}
-						>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendThreshold>
-					)}
-					{dataRender.mapScale === 'ordinal' && (
-						<LegendOrdinal
-							{...legendProps}
-							scale={ordinalScale}
-							domain={legend.categories.length > 0 ? legend.categories : ordinalScale.domain()}
-						>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => ordinalScale(label.datum)}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendOrdinal>
-					)}
-					{dataRender.mapScale === 'linear' && (
-						<LegendLinear {...legendProps} scale={linearScale}>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendLinear>
-					)}
+					<ClickableLegend
+						labels={valueScale.legendItems}
+						shape={legend.markerStyle}
+						fill={(label) => label.value}
+						shapeStyle={legendProps.shapeStyle}
+						direction={legend.orientation}
+						legendLabelProps={legendProps.legendLabelProps}
+					/>
 				</StyledLegend>
 			)}
 			{tooltipOpen && tooltipData && tooltipVisible && (
@@ -477,12 +445,14 @@ const BlockUSA = () => {
 						dangerouslySetInnerHTML={{
 							__html: tooltipData.customTooltip
 								? tooltipData.customTooltip
-								: getTooltipFormat({
+								: getTooltipFormat(
+										{
 											x: tooltipData.x,
 											y: tooltipData.y,
 											category: tooltipData.category,
 											color: tooltipData.fill,
-										data: tooltipData,},
+											data: tooltipData,
+										},
 										tooltip,
 										dataRender
 									),

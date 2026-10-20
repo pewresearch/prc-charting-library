@@ -191,14 +191,16 @@ const AnimatedCircle = forwardRef<SVGCircleElement, AnimatedCircleProps>(
 		// changes for fill/opacity through the animated channel, so bind
 		// paint props directly whenever we are not actually tweening.
 		const useDirectPaint = immediate;
+		const animatedCx = useDirectPaint ? numericCx : springs.cx;
+		const animatedCy = useDirectPaint ? numericCy : springs.cy;
 
 		return (
 			<animated.circle
 				ref={ref}
 				{...rest}
 				className={composedClassName}
-				cx={positionControlled ? cx : useDirectPaint ? numericCx : springs.cx}
-				cy={positionControlled ? cy : useDirectPaint ? numericCy : springs.cy}
+				cx={positionControlled ? cx : animatedCx}
+				cy={positionControlled ? cy : animatedCy}
 				r={useDirectPaint ? r : springs.r}
 				fill={useDirectPaint ? fill : springs.fill}
 				opacity={useDirectPaint ? opacity : springs.opacity}

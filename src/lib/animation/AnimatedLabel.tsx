@@ -43,7 +43,8 @@ export interface AnimatedLabelProps {
 	/** Caller opacity (e.g. tooltip deemphasis); composed with the fade. */
 	fillOpacity?: number;
 	children: React.ReactNode;
-	/** Remaining `DraggableLabel` props (defaultDx, text props, …). */
+	/** Remaining `DraggableLabel` props (defaultDx, text props, groupValue, …). */
+	groupValue?: string | null;
 	[key: string]: unknown;
 }
 

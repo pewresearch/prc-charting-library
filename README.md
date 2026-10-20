@@ -1,5 +1,7 @@
 # @prc/charting-library
 
+Version 3.15.0
+
 A comprehensive, production-ready charting library for Pew Research Center,
 built on [Airbnb's visx](https://airbnb.io/visx/) (formerly vx) and d3.js. The **editor**
 uses React; the **frontend** uses a Preact Script Module that bridges to the
@@ -291,9 +293,9 @@ tooltip: {
 },
 ```
 
-| Mode | Behavior |
-| ---- | -------- |
-| `point` | Voronoi hit-testing resolves one data point per hover (existing behavior). |
+| Mode      | Behavior                                                                                                                                  |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `point`   | Voronoi hit-testing resolves one data point per hover (existing behavior).                                                                |
 | `unified` | Pointer x snaps to the nearest column with data; the tooltip lists every series at that x. A vertical crosshair spans the plotted values. |
 
 Unified mode bypasses Voronoi so the tooltip stays live anywhere in the column,

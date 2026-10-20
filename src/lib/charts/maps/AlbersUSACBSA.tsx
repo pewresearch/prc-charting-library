@@ -23,22 +23,30 @@ import {
 	getCustomLabel,
 	getCustomLabelText,
 	getLabelFill,
+	createValueColorScale,
+	hasCategoryValue,
 } from '@prc/charting-utilities';
-import { StyledTooltip, StyledLegend, AnnotationsLayer, DrawingsLayer, ClickableLegend } from '../../overlays';
+import {
+	StyledTooltip,
+	StyledLegend,
+	AnnotationsLayer,
+	DrawingsLayer,
+	ClickableLegend,
+	SeriesPatternDefs,
+} from '../../overlays';
 import { DraggableLabel } from '../../labels';
 
 // Visx
 import { AlbersUsa } from '@visx/geo';
 import { geoCentroid } from '@visx/vendor/d3-geo';
-import { scaleLinear, scaleOrdinal, scaleSqrt, scaleThreshold } from '@visx/scale';
+import { scaleSqrt } from '@visx/scale';
 import { useTooltip } from '@visx/tooltip';
 import { EventType } from '@visx/event/lib/types';
 import { Group } from '@visx/group';
-import { LegendLinear, LegendOrdinal, LegendThreshold } from '@visx/legend';
 
 // STYLED COMPONENTS
 import styled from '@emotion/styled';
-import MapBubbleLayer from './MapBubbleLayer';
+import MapBubbleLayer, { getBubbleGroup, getBubbleGroups } from './MapBubbleLayer';
 import MapBubbleLegend from './MapBubbleLegend';
 
 const loadCbsaTopology = createTopologyLoader(() => import('../../data/maps/usa-cbsa/topology.json'));
@@ -94,7 +102,8 @@ const AlbersUSACBSA = () => {
 		[usaTopology]
 	);
 
-	const { layout, colors, dataRender, map, labels, legend, tooltip, shapes, annotations, drawings } = config;
+	const { layout, colors, dataRender, map, labels, legend, tooltip, shapes, annotations, drawings, seriesStyles } =
+		config;
 	const { padding, parentClass, width, height } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
 	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
@@ -129,35 +138,15 @@ const AlbersUSACBSA = () => {
 		});
 	}, [usCBSAs, flattenedData]);
 
-	const thresholdScale = scaleThreshold<number, string>({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors,
+	const valueScale = createValueColorScale({
+		mode: dataRender.mapScale,
+		domain: dataRender.mapScaleDomain,
+		colors,
+		emptyFill: map.pathBackgroundFill,
+		seriesStyles,
+		legend,
+		legendOrder: legend.categories,
 	});
-
-	const ordinalScale = scaleOrdinal({
-		domain: dataRender.mapScaleDomain as string[],
-		range: colors,
-	});
-
-	const linearScale = scaleLinear({
-		domain: dataRender.mapScaleDomain as number[],
-		range: colors.map((c: string) => {
-			const m = c.match(/^light-dark\(([^,]+),/);
-			return m ? m[1].trim() : c;
-		}),
-	});
-
-	const getFill = (id: number | string, featureData: any, category: string) => {
-		if (!id) return 'transparent';
-		if (!featureData?.[category]) return map.pathBackgroundFill;
-		if (dataRender.mapScale === 'linear') {
-			return linearScale(featureData?.[category]);
-		}
-		if (dataRender.mapScale === 'ordinal') {
-			return ordinalScale(featureData?.[category]);
-		}
-		return thresholdScale(featureData?.[category]);
-	};
 
 	const centerX = innerWidth / 2 + padding.left;
 	const centerY = innerHeight / 2 + padding.top;
@@ -181,6 +170,25 @@ const AlbersUSACBSA = () => {
 		() =>
 			scaleSqrt({ domain: [0, maxDataValue], range: [map.bubble?.minRadius ?? 4, map.bubble?.maxRadius ?? 24] }),
 		[maxDataValue, map.bubble?.minRadius, map.bubble?.maxRadius]
+	);
+
+	const bubbleGroups = useMemo(
+		() =>
+			getBubbleGroups({
+				groupBy: isBubbleMode ? dataRender.groupBreaksCategory : undefined,
+				category,
+				groupOrder: dataRender.groupBreaksCategoryValues,
+				data: flattenedData,
+				colors,
+			}),
+		[
+			isBubbleMode,
+			dataRender.groupBreaksCategory,
+			category,
+			dataRender.groupBreaksCategoryValues,
+			flattenedData,
+			colors,
+		]
 	);
 
 	const { ariaProps, legendProps, tooltipVisible, annotationsVisible, labelProps } = useMemo(
@@ -225,6 +233,13 @@ const AlbersUSACBSA = () => {
 				viewBox={`0 0 ${chartWidth} ${chartHeight}`}
 				preserveAspectRatio="xMidYMid meet"
 			>
+				<SeriesPatternDefs
+					seriesStyles={seriesStyles}
+					resolveFill={(name) =>
+						seriesStyles?.[name]?.fill ??
+						(isBubbleMode ? bubbleGroups.groupFill(name) : valueScale.keyFill(name))
+					}
+				/>
 				<Group role="presentation" top={padding.top} left={padding.left}>
 					{/* State outlines — provides the full US context since CBSAs don't cover rural areas */}
 					<AlbersUsa<FeatureShape>
@@ -260,8 +275,10 @@ const AlbersUSACBSA = () => {
 								const coords: [number, number] | null = projection(geoCentroid(feature));
 								const { id, properties } = feature;
 								if (!coords || !id) return null;
-								const hasData = Boolean(properties?.[category]);
-								const fill = isBubbleMode ? map.pathBackgroundFill : getFill(id, properties, category);
+								const hasData = hasCategoryValue(properties, category);
+								const fill = isBubbleMode
+									? map.pathBackgroundFill
+									: valueScale.getFill(properties?.[category]);
 								const shapeIdentifier = properties.x || properties.name || id;
 								const shapeKey = generateElementKey(shapeIdentifier, category, null);
 								const customShapeStyles =
@@ -287,7 +304,7 @@ const AlbersUSACBSA = () => {
 							// and data-bearing CBSAs become the interactive choropleth.
 							const polygonLayer = featureMeta.map((meta) => {
 								if (!meta) return null;
-								const { path, id, properties, hasData, fill, shapeFill, customShapeStyles, i } = meta;
+								const { path, id, properties, hasData, fill, customShapeStyles, i } = meta;
 
 								if (isBubbleMode || !hasData) {
 									return (
@@ -333,14 +350,20 @@ const AlbersUSACBSA = () => {
 									id,
 									tooltipData as FlatData
 								);
+								const binPaint = valueScale.getPaint(properties[category], {
+									stroke,
+									strokeWidth,
+									opacity,
+								});
 								return (
 									<MapFeature
 										key={`cbsa-feature-${i}`}
 										d={path || ''}
-										fill={shapeFill}
-										stroke={customShapeStyles.stroke || stroke}
-										opacity={customShapeStyles.opacity ?? opacity}
-										strokeWidth={customShapeStyles.strokeWidth ?? strokeWidth}
+										fill={customShapeStyles.fill || binPaint.fill}
+										stroke={customShapeStyles.stroke || binPaint.stroke}
+										opacity={customShapeStyles.opacity ?? binPaint.opacity}
+										strokeWidth={customShapeStyles.strokeWidth ?? binPaint.strokeWidth}
+										strokeOpacity={customShapeStyles.strokeOpacity ?? binPaint.strokeOpacity}
 										tabIndex={0}
 										style={{
 											cursor: wpEditorFunctions?.shapes ? 'pointer' : undefined,
@@ -384,7 +407,13 @@ const AlbersUSACBSA = () => {
 											...properties,
 											x: properties.x || properties.name || id,
 										};
-										const contrastSrc = isBubbleMode ? colors[0] : shapeFill;
+										const bubbleGroup = getBubbleGroup(bubbleGroups, properties);
+										const contrastSrc = isBubbleMode
+											? bubbleGroups.groupFill(bubbleGroup ?? '')
+											: shapeFill;
+										const labelSeriesKey = isBubbleMode
+											? (bubbleGroup ?? '')
+											: String(valueScale.styleKey(properties[category]) ?? '');
 										return (
 											<DraggableLabel
 												key={`cbsa-label-${id}`}
@@ -392,6 +421,7 @@ const AlbersUSACBSA = () => {
 												y={coords[1]}
 												dataPoint={dataPoint}
 												category={category}
+												seriesKey={labelSeriesKey}
 												defaultDx={labels.labelPositionDX}
 												defaultDy={labels.labelPositionDY}
 												chartInnerWidth={innerWidth}
@@ -423,6 +453,8 @@ const AlbersUSACBSA = () => {
 											category={category}
 											bubbleRadiusScale={bubbleRadiusScale}
 											fill={colors[0]}
+											groups={bubbleGroups}
+											seriesStyles={seriesStyles}
 											bubbleConfig={map.bubble}
 											svgRef={svgRef}
 											showTooltip={showTooltip}
@@ -464,58 +496,14 @@ const AlbersUSACBSA = () => {
 					chartWidth={chartWidth}
 					chartHeight={chartHeight}
 				>
-					{dataRender.mapScale === 'threshold' && (
-						<LegendThreshold
-							{...legendProps}
-							scale={thresholdScale}
-							labelLower={legend.labelLower}
-							labelUpper={legend.labelUpper}
-							labelDelimiter={legend.labelDelimiter}
-						>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendThreshold>
-					)}
-					{dataRender.mapScale === 'ordinal' && (
-						<LegendOrdinal
-							{...legendProps}
-							scale={ordinalScale}
-							domain={legend.categories.length > 0 ? legend.categories : ordinalScale.domain()}
-						>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => ordinalScale(label.datum)}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendOrdinal>
-					)}
-					{dataRender.mapScale === 'linear' && (
-						<LegendLinear {...legendProps} scale={linearScale}>
-							{(legendLabels: any) => (
-								<ClickableLegend
-									labels={legendLabels}
-									shape={legend.markerStyle}
-									fill={(label) => label.value}
-									shapeStyle={legendProps.shapeStyle}
-									direction={legend.orientation}
-									legendLabelProps={legendProps.legendLabelProps}
-								/>
-							)}
-						</LegendLinear>
-					)}
+					<ClickableLegend
+						labels={valueScale.legendItems}
+						shape={legend.markerStyle}
+						fill={(label) => label.value}
+						shapeStyle={legendProps.shapeStyle}
+						direction={legend.orientation}
+						legendLabelProps={legendProps.legendLabelProps}
+					/>
 				</StyledLegend>
 			)}
 			{legend.active && isBubbleMode && (
@@ -569,12 +557,14 @@ const AlbersUSACBSA = () => {
 						dangerouslySetInnerHTML={{
 							__html: tooltipData.customTooltip
 								? tooltipData.customTooltip
-								: getTooltipFormat({
+								: getTooltipFormat(
+										{
 											x: tooltipData.x,
 											y: tooltipData.y,
 											category: tooltipData.category,
 											color: tooltipData.fill,
-										data: tooltipData,},
+											data: tooltipData,
+										},
 										tooltip,
 										dataRender
 									),

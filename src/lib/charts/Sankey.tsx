@@ -17,10 +17,19 @@ import {
 	legendCategoryShapeStyle,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
+	resolvePatternFill,
+	resolveShapePaint,
 	useSize,
 } from '@prc/charting-utilities';
 import { DraggableLabel } from '../labels';
-import { AnnotationsLayer, ClickableLegend, DrawingsLayer, StyledLegend, StyledTooltip } from '../overlays';
+import {
+	AnnotationsLayer,
+	ClickableLegend,
+	DrawingsLayer,
+	SeriesPatternDefs,
+	StyledLegend,
+	StyledTooltip,
+} from '../overlays';
 
 import { Group } from '@visx/group';
 import { LegendOrdinal } from '@visx/legend';
@@ -140,6 +149,7 @@ const SankeyChart = () => {
 		sankey: sankeyConfig,
 		annotations,
 		drawings,
+		seriesStyles,
 	} = config;
 
 	// LAYOUT
@@ -332,6 +342,12 @@ const SankeyChart = () => {
 				{...ariaProps}
 				style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 			>
+				<SeriesPatternDefs
+					seriesStyles={seriesStyles}
+					resolveFill={(key) =>
+						resolveCategoryColor({ category: key, fallback: colorScale(key), dataRender })
+					}
+				/>
 				<Group top={padding.top} left={padding.left} role="presentation">
 					<VisxSankey<SankeyNodeDatum, {}>
 						root={graphData}
@@ -495,9 +511,14 @@ const SankeyChart = () => {
 											const shapeKey = `${node.name}::node`;
 											const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
 
-											const shapeFill = customShapeStyles.fill || nodeColor;
-											const shapeStroke = customShapeStyles.stroke || nodeColor;
-											const shapeOpacity = (customShapeStyles.opacity ?? 1) * nodeCategoryOpacity;
+											// Nodes key their series row by node name.
+											const nodePaint = resolveShapePaint(
+												customShapeStyles,
+												{ fill: nodeColor, stroke: nodeColor, strokeWidth: 0, opacity: 1 },
+												seriesStyles?.[node.name]
+											);
+											const shapeFill = resolvePatternFill(nodePaint, node.name);
+											const shapeOpacity = (nodePaint.opacity ?? 1) * nodeCategoryOpacity;
 
 											// Deemphasis
 											const isDeemphasized =
@@ -520,8 +541,8 @@ const SankeyChart = () => {
 														fillOpacity={
 															isDeemphasized ? tooltip.deemphasizeOpacity : shapeOpacity
 														}
-														stroke={shapeStroke}
-														strokeWidth={0}
+														stroke={nodePaint.stroke}
+														strokeWidth={nodePaint.strokeWidth}
 														all
 														className="visx-sankey-node"
 														style={{
@@ -562,7 +583,7 @@ const SankeyChart = () => {
 																	type: 'node',
 																	name: node.name,
 																	value: node.value ?? 0,
-																	color: shapeFill,
+																	color: nodePaint.fill ?? nodeColor,
 																},
 																tooltipTop: coords.y,
 																tooltipLeft: coords.x,
@@ -580,7 +601,7 @@ const SankeyChart = () => {
 																	type: 'node',
 																	name: node.name,
 																	value: node.value ?? 0,
-																	color: shapeFill,
+																	color: nodePaint.fill ?? nodeColor,
 																},
 																tooltipTop: y0 + nodeHeight / 2,
 																tooltipLeft: x0 + nodeWidth / 2,
@@ -594,13 +615,14 @@ const SankeyChart = () => {
 															y={y0 + nodeHeight / 2}
 															dataPoint={nodeDataPoint}
 															category={node.name}
+															seriesKey={node.name}
 															defaultDx={0}
 															defaultDy={0}
 															chartInnerWidth={innerWidth}
 															chartInnerHeight={innerHeight}
 															defaultLabel={node.name}
 															textAnchor={x0 < innerWidth / 2 ? 'start' : 'end'}
-															verticalAnchor="middle"
+															dominantBaseline="middle"
 															fontSize={labels.fontSize}
 															fontWeight={labels.fontWeight}
 															fontFamily={labels.fontFamily}
@@ -641,13 +663,14 @@ const SankeyChart = () => {
 										y={y0 + nodeHeight / 2}
 										dataPoint={dataPoint}
 										category={name}
+										seriesKey={name}
 										defaultDx={0}
 										defaultDy={0}
 										chartInnerWidth={innerWidth}
 										chartInnerHeight={innerHeight}
 										defaultLabel={name}
 										textAnchor={x0 < innerWidth / 2 ? 'start' : 'end'}
-										verticalAnchor="middle"
+										dominantBaseline="middle"
 										fontSize={labels.fontSize}
 										fontWeight={labels.fontWeight}
 										fontFamily={labels.fontFamily}

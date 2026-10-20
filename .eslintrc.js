@@ -1,5 +1,6 @@
 module.exports = {
 	extends: ['../../.eslintrc.js'],
+	ignorePatterns: ['tests/**/*'],
 	rules: {
 		// Disable problematic WordPress design system token rules
 		'@wordpress/no-setting-ds-tokens': 'off',
@@ -16,6 +17,15 @@ module.exports = {
 		// be run manually to auto-format, but it won't block editing.
 		'prettier/prettier': 'off',
 	},
+	overrides: [
+		{
+			// TypeScript signatures already document parameters.
+			files: ['*.ts', '*.tsx'],
+			rules: {
+				'jsdoc/require-param': 'off',
+			},
+		},
+	],
 	settings: {
 		// Override import resolver to prevent typescript resolver errors
 		'import/resolver': {

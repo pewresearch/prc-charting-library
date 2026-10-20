@@ -25,7 +25,12 @@ import {
 	newDateByFormat,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
-	resolveNodeShapeColors,
+	resolveBarPaint,
+	resolveLinePathPaint,
+	resolvePatternFill,
+	resolvePointPaint,
+	resolvePointSize,
+	resolveSegmentPaint,
 	legendCategoryShapeStyle,
 	scaleAxisNumTicks,
 	useSize,
@@ -38,6 +43,7 @@ import {
 	Crosshair,
 	DrawingsLayer,
 	PlotBands,
+	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
 	UnifiedTooltipRows,
@@ -45,11 +51,11 @@ import {
 	ZeroBaseline,
 } from '../overlays';
 import { AnimatedArea, AnimatedCircle, AnimatedLinePath, AnimatedLabel, TransitionProvider } from '../animation';
-import { DraggableLabel } from '../labels';
 import {
 	buildLineChartLabelId,
 	buildLineChartLabelInputs,
 	DirectSeriesLegendLabels,
+	DraggableLabel,
 	getDeclutterOffset,
 	getFirstLastLabelPlacement,
 	getLineLabelContent,
@@ -115,6 +121,7 @@ const Line = () => {
 		line,
 		layout,
 		colors,
+		seriesStyles,
 		nodes,
 		dataRender,
 		tooltip,
@@ -263,11 +270,13 @@ const Line = () => {
 
 	// GET SHARED LAYOUT PROPS
 	const onTickClick = wpEditorFunctions?.tickLabels?.onClick;
-	const independentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />
+	const independentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="independent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
-	const dependentTicksComponent = (props: any) => (
-		<ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />
+	const dependentTicksComponent = useCallback(
+		(props: any) => <ClickableTicks {...props} axisKey="dependent" onTickClick={onTickClick} />,
+		[onTickClick]
 	);
 	const {
 		dependentAxisProps,
@@ -523,13 +532,8 @@ const Line = () => {
 			getIndependentValue,
 			innerWidth,
 			innerHeight,
-			layout,
 			tooltipTimeout,
-			wpEditorFunctions,
-			tooltip.active,
-			tooltipVisible,
 			padding,
-			data.length,
 			setCursorPosition,
 			isUnified,
 			snapUnifiedColumn,
@@ -549,7 +553,7 @@ const Line = () => {
 				}
 			}
 		},
-		[voronoiLayout, layout, events.click]
+		[voronoiLayout, events, padding.left, padding.top]
 	);
 
 	const handleMouseLeave = useCallback(() => {
@@ -577,6 +581,7 @@ const Line = () => {
 					}}
 					{...ariaProps}
 				>
+					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
 					<LeaderLineProvider>
 						<Group
 							top={padding.top}
@@ -652,6 +657,15 @@ const Line = () => {
 									category,
 									dataRender,
 								});
+								const pathPaint = resolveLinePathPaint(line, seriesColor, seriesStyles?.[category]);
+								const areaPaint = resolveBarPaint(
+									{
+										fill: seriesColor,
+										opacity: 1,
+									},
+									seriesStyles?.[category]
+								);
+								const areaFill = resolvePatternFill(areaPaint, category);
 
 								// Marker renderer shared by curve mode (where `cx`/`cy` are
 								// fed from the AnimatedLinePath shared point-array spring so
@@ -682,25 +696,33 @@ const Line = () => {
 									const groupValue = getGroupValue(d, dataRender);
 									const shapeKey = generateShapeKey(d.x, category, groupValue);
 									const customShapeStyles = shapes?.customStyles?.[shapeKey] || {};
-									const { fill: defaultFill, stroke: defaultStroke } = resolveNodeShapeColors(
+									const pointPaint = resolvePointPaint(
 										nodes,
-										seriesColor
+										seriesColor,
+										seriesStyles?.[category],
+										customShapeStyles
 									);
-									const shapeFill = customShapeStyles.fill || defaultFill;
-									const shapeStroke = customShapeStyles.stroke || defaultStroke;
-									const shapeStrokeWidth = customShapeStyles.strokeWidth ?? nodes.pointStrokeWidth;
+									const shapeFill = pointPaint.fill;
+									const shapeStroke = pointPaint.stroke;
+									const shapeStrokeWidth = pointPaint.strokeWidth;
 									const shapeOpacity = (customShapeStyles.opacity ?? 1) * seriesOpacity;
+									const pointRadius = resolvePointSize(
+										nodes,
+										seriesStyles?.[category],
+										customShapeStyles
+									);
 									return (
 										<StyledAnimatedCircle
 											key={j}
 											tabIndex={0}
-											r={nodes.pointSize}
+											r={pointRadius}
 											cx={cx}
 											cy={cy}
 											entranceDelay={entranceDelay}
 											entranceDuration={entranceDuration}
 											stroke={shapeStroke}
 											strokeWidth={shapeStrokeWidth}
+											strokeOpacity={pointPaint.strokeOpacity}
 											fill={shapeFill}
 											opacity={shapeOpacity}
 											style={{
@@ -724,7 +746,7 @@ const Line = () => {
 												deemphasisActive &&
 												tooltipData.category !== category
 													? tooltip.deemphasizeOpacity
-													: (nodes.pointFillOpacity ?? 1)
+													: (pointPaint.fillOpacity ?? 1)
 											}
 											onBlur={() => {
 												tooltipTimeout = window.setTimeout(() => {
@@ -765,8 +787,9 @@ const Line = () => {
 													y1: dependentScale(d[category]) ?? 0,
 												}))}
 												strokeWidth={0}
-												fill={seriesColor}
+												fill={areaFill}
 												fillOpacity={line.areaFillOpacity * seriesOpacity}
+												opacity={areaPaint.opacity}
 												curve={Curve[interpolation]}
 												style={{
 													cursor: wpEditorFunctions?.line ? 'pointer' : undefined,
@@ -817,13 +840,16 @@ const Line = () => {
 														const isHovered =
 															wpEditorFunctions?.segments && hoveredSegment === hoverKey;
 
-														// Apply custom styles with fallbacks
-														const segmentStroke = customSegmentStyles.stroke || seriesColor;
-														const segmentStrokeWidth =
-															customSegmentStyles.strokeWidth ?? line.strokeWidth;
-														const segmentOpacity = customSegmentStyles.opacity ?? 1;
-														const segmentDasharray =
-															customSegmentStyles.strokeDasharray || line.strokeDasharray;
+														const segmentPaint = resolveSegmentPaint(
+															customSegmentStyles,
+															{
+																stroke: seriesColor,
+																strokeWidth: line.strokeWidth,
+																opacity: 1,
+																strokeDasharray: line.strokeDasharray || undefined,
+															},
+															seriesStyles?.[category]
+														);
 
 														// Tooltip deemphasis
 														const isDeemphasized =
@@ -834,13 +860,13 @@ const Line = () => {
 
 														// Hover highlight styling
 														const displayStrokeWidth = isHovered
-															? segmentStrokeWidth + 2
+															? (segmentPaint.strokeWidth ?? 0) + 2
 															: tooltipData &&
 																  tooltipVisible &&
 																  deemphasisActive &&
 																  tooltipData.category === category
-																? segmentStrokeWidth + 1
-																: segmentStrokeWidth;
+																? (segmentPaint.strokeWidth ?? 0) + 1
+																: segmentPaint.strokeWidth;
 
 														// Generate path d attribute for the segment
 														const pathD = `M ${x1} ${y1} L ${x2} ${y2}`;
@@ -874,14 +900,17 @@ const Line = () => {
 																{/* Visible segment path */}
 																<path
 																	d={pathD}
-																	stroke={isHovered ? '#007cba' : segmentStroke}
+																	stroke={isHovered ? '#007cba' : segmentPaint.stroke}
 																	strokeWidth={displayStrokeWidth}
 																	strokeOpacity={
-																		(isDeemphasized
+																		isDeemphasized
 																			? tooltip.deemphasizeOpacity
-																			: segmentOpacity) * seriesOpacity
+																			: segmentPaint.strokeOpacity
 																	}
-																	strokeDasharray={segmentDasharray}
+																	opacity={
+																		(segmentPaint.opacity ?? 1) * seriesOpacity
+																	}
+																	strokeDasharray={segmentPaint.strokeDasharray}
 																	fill="none"
 																	strokeLinecap="round"
 																	strokeLinejoin="round"
@@ -905,17 +934,18 @@ const Line = () => {
 														x: independentScale(getIndependentValue(d)) ?? 0,
 														y: dependentScale(d[category]) ?? 0,
 													}))}
-													stroke={seriesColor}
-													strokeWidth={line.strokeWidth}
-													strokeDasharray={line.strokeDasharray || undefined}
+													stroke={pathPaint.stroke ?? seriesColor}
+													strokeWidth={pathPaint.strokeWidth}
+													strokeDasharray={pathPaint.strokeDasharray}
 													strokeOpacity={
-														(tooltipData &&
+														tooltipData &&
 														tooltipVisible &&
 														deemphasisActive &&
 														tooltipData.category !== category
 															? tooltip.deemphasizeOpacity
-															: 1) * seriesOpacity
+															: pathPaint.strokeOpacity
 													}
+													opacity={(pathPaint.opacity ?? 1) * seriesOpacity}
 													strokeLinejoin="round"
 													curve={Curve[interpolation]}
 													style={{
