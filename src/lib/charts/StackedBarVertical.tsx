@@ -3,6 +3,7 @@ import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef } fr
 import {
 	DataContext,
 	generateElementKey,
+	barFillForLabelContrast,
 	getBarLabelFill,
 	getChartDimensions,
 	getCustomLabel,
@@ -313,18 +314,17 @@ const StackedBarVertical = () => {
 													const paint = resolveBarPaint(
 														{
 															fill: defaultColor,
-															stroke: barConfig.hasRectStroke
-																? barConfig.rectStrokeColor
-																: undefined,
-															strokeWidth: barConfig.hasRectStroke
-																? barConfig.rectStrokeWidth
-																: undefined,
 															opacity: 1,
 														},
 														seriesStyles?.[category],
-														customShapeStyles
+														customShapeStyles,
+														barConfig
 													);
 													const shapeFill = resolvePatternFill(paint, category);
+													const labelContrastFill = barFillForLabelContrast(
+														shapeFill,
+														defaultColor
+													);
 													const shapeStroke = paint.stroke;
 													const shapeStrokeWidth = paint.strokeWidth;
 													const shapeOpacity = (paint.opacity ?? 1) * categoryOpacity;
@@ -448,8 +448,8 @@ const StackedBarVertical = () => {
 																		labels.labelPositionBar,
 																		barValue,
 																		labelCutoff,
-																		defaultColor,
-																		bar.color
+																		labelContrastFill,
+																		labelContrastFill
 																	)}
 																	fillOpacity={
 																		tooltipData &&

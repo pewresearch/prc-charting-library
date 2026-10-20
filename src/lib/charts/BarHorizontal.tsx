@@ -5,6 +5,7 @@ import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef } fr
 import {
 	DataContext,
 	generateElementKey,
+	barFillForLabelContrast,
 	getBarLabelFill,
 	getChartDimensions,
 	getCustomLabel,
@@ -366,9 +367,14 @@ const BarHorizontal = () => {
 																		opacity: 1,
 																	},
 																	seriesStyles?.[bar.key],
-																	customShapeStyles
+																	customShapeStyles,
+																	barConfig
 																);
 																const shapeFill = resolvePatternFill(paint, bar.key);
+																const labelContrastFill = barFillForLabelContrast(
+																	shapeFill,
+																	defaultColor
+																);
 																const shapeStroke = paint.stroke;
 																const shapeStrokeWidth = paint.strokeWidth;
 																const shapeOpacity =
@@ -513,12 +519,8 @@ const BarHorizontal = () => {
 																					labels.labelPositionBar,
 																					bar.value,
 																					labelCutoff,
-																					getSeriesColor(
-																						bar.key,
-																						bar.color,
-																						isHighlighted
-																					),
-																					bar.color
+																					labelContrastFill,
+																					labelContrastFill
 																				)}
 																				fillOpacity={
 																					tooltipData &&

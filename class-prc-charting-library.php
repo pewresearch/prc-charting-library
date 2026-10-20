@@ -11,7 +11,7 @@
  * Plugin Name:       PRC Charting Library
  * Plugin URI:        https://github.com/pewresearch/pewresearch-org
  * Description:       Pew Research Center's propietary charting library framework for use in PRC Platform.
- * Version:           3.15.0
+ * Version:           3.16.0
  * Requires at least: 6.2
  * Requires PHP:      8.0
  * Requires Plugins:  prc-scripts

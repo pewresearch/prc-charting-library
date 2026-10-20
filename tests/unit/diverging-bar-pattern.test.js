@@ -10,9 +10,10 @@ beforeAll(() => {
 	});
 });
 
-function renderDiverging(Component, orientation, seriesStyles, secondary, divergingBarExtras) {
+function renderDiverging(Component, orientation, seriesStyles, secondary, divergingBarExtras, configExtras = {}) {
 	const config = {
 		...baseConfig,
+		...configExtras,
 		layout: {
 			...baseConfig.layout,
 			type: 'diverging-bar',
@@ -56,6 +57,102 @@ function renderDiverging(Component, orientation, seriesStyles, secondary, diverg
 }
 
 describe('diverging bar series patterns', () => {
+	test('grouped horizontal chart places the dependent axis below all groups', () => {
+		const padding = { top: 20, right: 20, bottom: 30, left: 40 };
+		const config = {
+			...baseConfig,
+			layout: {
+				...baseConfig.layout,
+				type: 'diverging-bar',
+				orientation: 'horizontal',
+				height: 240,
+				padding,
+			},
+			dependentAxis: {
+				...baseConfig.dependentAxis,
+				active: true,
+			},
+			dataRender: {
+				...baseConfig.dataRender,
+				categories: ['Dems', 'Reps'],
+				groupBreaksActive: true,
+				groupBreaksCategory: 'Party',
+				groupBreaksCategoryValues: ['Group A', 'Group B'],
+				groupBreaks: {
+					breakStyles: {
+						height: 40,
+					},
+				},
+				sortOrder: 'none',
+			},
+			divergingBar: {
+				...baseConfig.divergingBar,
+				negativeCategories: ['Dems'],
+				positiveCategories: ['Reps'],
+			},
+		};
+
+		const { container } = render(
+			createElement(
+				DataProvider,
+				{
+					value: {
+						data: [
+							{
+								x: 'Adults',
+								Party: 'Group A',
+								Dems: 40,
+								Reps: 60,
+							},
+							{
+								x: 'Voters',
+								Party: 'Group B',
+								Dems: 45,
+								Reps: 55,
+							},
+						],
+						config,
+						tableData: { header: [], rows: [] },
+					},
+				},
+				createElement(DivergingBarHorizontal)
+			)
+		);
+
+		const svg = container.querySelector('svg');
+		const dependentAxis = container.querySelector('.visx-axis-bottom');
+		const contentHeight = Number(svg.getAttribute('height')) - padding.top - padding.bottom;
+		const axisTop = Number(dependentAxis.getAttribute('transform').match(/^translate\(0, ([^)]+)\)$/)?.[1]);
+
+		expect(axisTop).toBeCloseTo(contentHeight);
+	});
+
+	test('horizontal neutral column does not repeat the dependent axis', () => {
+		const markup = renderDiverging(
+			DivergingBarHorizontal,
+			'horizontal',
+			undefined,
+			undefined,
+			{
+				neutralBar: {
+					...baseConfig.divergingBar.neutralBar,
+					active: true,
+					category: 'Neutral',
+				},
+			},
+			{
+				dependentAxis: {
+					...baseConfig.dependentAxis,
+					active: true,
+				},
+			}
+		);
+		const container = document.createElement('div');
+		container.innerHTML = markup;
+
+		expect(container.querySelectorAll('.visx-axis-bottom')).toHaveLength(1);
+	});
+
 	test('horizontal primary bars render and reference the series pattern', () => {
 		const markup = renderDiverging(DivergingBarHorizontal, 'horizontal', {
 			Dems: {

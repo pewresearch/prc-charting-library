@@ -3,6 +3,7 @@ import { useCallback, useContext, useMemo, useRef, RefObject, CSSProperties } fr
 import {
 	DataContext,
 	useSize,
+	barFillForLabelContrast,
 	getBarLabelFill,
 	scaleAxisNumTicks,
 	getCustomTooltip,
@@ -344,14 +345,17 @@ const ExplodedBar = () => {
 															const paint = resolveBarPaint(
 																{
 																	fill: defaultColor,
-																	stroke: undefined,
-																	strokeWidth: undefined,
 																	opacity: 1,
 																},
 																seriesStyles?.[barCategory],
-																customShapeStyles
+																customShapeStyles,
+																barConfig
 															);
 															const shapeFill = resolvePatternFill(paint, barCategory);
+															const labelContrastFill = barFillForLabelContrast(
+																shapeFill,
+																defaultColor
+															);
 															const shapeOpacity = (paint.opacity ?? 1) * categoryOpacity;
 
 															return (
@@ -478,8 +482,8 @@ const ExplodedBar = () => {
 																					labels.labelPositionBar,
 																					barValue,
 																					labelCutoff,
-																					defaultColor,
-																					bar.color
+																					labelContrastFill,
+																					labelContrastFill
 																				)}
 																				fillOpacity={
 																					tooltipData &&
@@ -723,6 +727,36 @@ const ExplodedBar = () => {
 																		fallback: bar.color,
 																		dataRender,
 																	});
+																	const groupValue = getGroupValue(
+																		barData,
+																		dataRender
+																	);
+																	const shapeKey = generateElementKey(
+																		barData.x,
+																		barCategory,
+																		groupValue
+																	);
+																	const customShapeStyles =
+																		shapes?.customStyles?.[shapeKey] ||
+																		{};
+																	const paint = resolveBarPaint(
+																		{
+																			fill: defaultColor,
+																			opacity: 1,
+																		},
+																		seriesStyles?.[barCategory],
+																		customShapeStyles,
+																		barConfig
+																	);
+																	const shapeFill = resolvePatternFill(
+																		paint,
+																		barCategory
+																	);
+																	const labelContrastFill =
+																		barFillForLabelContrast(
+																			shapeFill,
+																			defaultColor
+																		);
 
 																	return (
 																		<AnimatedBarLabel
@@ -741,8 +775,8 @@ const ExplodedBar = () => {
 																				labels.labelPositionBar,
 																				barValue,
 																				labelCutoff,
-																				defaultColor,
-																				bar.color
+																				labelContrastFill,
+																				labelContrastFill
 																			)}
 																			{...labelProps}
 																		>

@@ -7,6 +7,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef, RefObject, CSSProp
 import {
 	DataContext,
 	useSize,
+	barFillForLabelContrast,
 	getBarLabelFill,
 	getCustomTooltip,
 	getCustomLabel,
@@ -370,18 +371,17 @@ const DivergingBarVertical = () => {
 													const paint = resolveBarPaint(
 														{
 															fill: defaultColor,
-															stroke: barConfig.hasRectStroke
-																? barConfig.rectStrokeColor
-																: undefined,
-															strokeWidth: barConfig.hasRectStroke
-																? barConfig.rectStrokeWidth
-																: undefined,
 															opacity: 1,
 														},
 														seriesStyles?.[category],
-														customShapeStyles
+														customShapeStyles,
+														barConfig
 													);
 													const shapeFill = resolvePatternFill(paint, category);
+													const labelContrastFill = barFillForLabelContrast(
+														shapeFill,
+														defaultColor
+													);
 													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
 														(paint.opacity ?? 1) * categoryOpacity * (seriesHidden ? 0 : 1);
@@ -515,8 +515,8 @@ const DivergingBarVertical = () => {
 																			labels.labelPositionBar,
 																			Math.abs(barValue),
 																			labelCutoff,
-																			defaultColor,
-																			bar.color
+																			labelContrastFill,
+																			labelContrastFill
 																		)}
 																		fillOpacity={
 																			tooltipData &&

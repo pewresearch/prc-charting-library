@@ -6,6 +6,7 @@ import type { BaseConfig, FlatData, GroupedData, Size, TableData, SeriesMaskView
 import {
 	DataContext,
 	generateElementKey,
+	barFillForLabelContrast,
 	getBarLabelFill,
 	getChartDimensions,
 	getCustomLabel,
@@ -388,7 +389,7 @@ const DivergingBarHorizontal = () => {
 							</>
 						)}
 						{dependentAxis.active && (
-							<AxisBottom {...dependentAxisProps} top={innerHeight} scale={dependentScale} />
+							<AxisBottom {...dependentAxisProps} top={actualContentHeight} scale={dependentScale} />
 						)}
 						{groupPositioning.map((groupPos, groupIndex) => {
 							const { group, data, startY, height, breakHeight } = groupPos;
@@ -520,18 +521,17 @@ const DivergingBarHorizontal = () => {
 													const paint = resolveBarPaint(
 														{
 															fill: defaultColor,
-															stroke: barConfig.hasRectStroke
-																? barConfig.rectStrokeColor
-																: undefined,
-															strokeWidth: barConfig.hasRectStroke
-																? barConfig.rectStrokeWidth
-																: undefined,
 															opacity: 1,
 														},
 														seriesStyles?.[category],
-														customShapeStyles
+														customShapeStyles,
+														barConfig
 													);
 													const shapeFill = resolvePatternFill(paint, category);
+													const labelContrastFill = barFillForLabelContrast(
+														shapeFill,
+														defaultColor
+													);
 													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
 														(paint.opacity ?? 1) * categoryOpacity * (seriesHidden ? 0 : 1);
@@ -683,8 +683,8 @@ const DivergingBarHorizontal = () => {
 																			labels.labelPositionBar,
 																			Math.abs(barValue),
 																			labelCutoff,
-																			defaultColor,
-																			bar.color
+																			labelContrastFill,
+																			labelContrastFill
 																		)}
 																		fillOpacity={
 																			tooltipData &&
@@ -859,9 +859,6 @@ const DivergingBarHorizontal = () => {
 							left={innerWidth * divergingBar.percentOfInnerWidth + divergingBar.neutralBar.offsetX}
 							role="presentation"
 						>
-							{dependentAxis.active && (
-								<AxisBottom top={innerHeight} {...dependentAxisProps} scale={dependentScale} />
-							)}
 							{groupPositioning.map((groupPos, groupIndex) => {
 								const { group, data, startY, height } = groupPos;
 
@@ -914,18 +911,17 @@ const DivergingBarHorizontal = () => {
 													const paint = resolveBarPaint(
 														{
 															fill: defaultColor,
-															stroke: barConfig.hasRectStroke
-																? barConfig.rectStrokeColor
-																: undefined,
-															strokeWidth: barConfig.hasRectStroke
-																? barConfig.rectStrokeWidth
-																: undefined,
 															opacity: 1,
 														},
 														seriesStyles?.[category],
-														customShapeStyles
+														customShapeStyles,
+														barConfig
 													);
 													const shapeFill = resolvePatternFill(paint, category);
+													const labelContrastFill = barFillForLabelContrast(
+														shapeFill,
+														defaultColor
+													);
 													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
 														(paint.opacity ?? 1) * categoryOpacity * (seriesHidden ? 0 : 1);
@@ -1045,8 +1041,8 @@ const DivergingBarHorizontal = () => {
 																		labels.labelPositionBar,
 																		barValue,
 																		labelCutoff,
-																		defaultColor,
-																		bar.color
+																		labelContrastFill,
+																		labelContrastFill
 																	)}
 																	fillOpacity={
 																		tooltipData &&
