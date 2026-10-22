@@ -1,6 +1,6 @@
 {
 	"name": "@prc/charting-library",
-	"version": "3.16.0",
+	"version": "3.16.2",
 	"main": "export.js",
 	"types": "src/index.d.ts",
 	"files": [

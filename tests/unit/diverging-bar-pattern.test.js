@@ -207,4 +207,35 @@ describe('diverging bar series patterns', () => {
 		expect(markup).toContain('id="series-pattern-neutral"');
 		expect(markup).toContain('fill="url(#series-pattern-neutral)"');
 	});
+
+	test('horizontal neutral bars stay visible when the diff column is active', () => {
+		const markup = renderDiverging(
+			DivergingBarHorizontal,
+			'horizontal',
+			{
+				Neutral: {
+					pattern: 'striped',
+				},
+			},
+			undefined,
+			{
+				neutralBar: {
+					...baseConfig.divergingBar.neutralBar,
+					active: true,
+					category: 'Neutral',
+				},
+			},
+			{
+				diffColumn: {
+					...baseConfig.diffColumn,
+					active: true,
+					category: 'Reps',
+					columnHeader: 'NET',
+				},
+			}
+		);
+
+		expect(markup).toContain('fill="url(#series-pattern-neutral)"');
+		expect(markup).toContain('NET');
+	});
 });

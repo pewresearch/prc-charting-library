@@ -853,7 +853,7 @@ const DivergingBarHorizontal = () => {
 							pointerEvents="none"
 						/>
 					</Group>
-					{divergingBar.neutralBar.active && !diffColumn.active && (
+					{divergingBar.neutralBar.active && (
 						<Group
 							top={padding.top}
 							left={innerWidth * divergingBar.percentOfInnerWidth + divergingBar.neutralBar.offsetX}
