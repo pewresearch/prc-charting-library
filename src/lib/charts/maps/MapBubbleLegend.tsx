@@ -112,8 +112,7 @@ const MapBubbleLegend = ({
 	const labelPosition = labelPositionProp ?? legendConfig?.bubbleLegend?.labelPosition ?? 'outside';
 	const fontSize = fontSizeProp ?? legendConfig?.fontSize ?? 11;
 
-	const values =
-		refValues.length > 0 ? [...refValues].sort((a, b) => a - b).slice(0, 3) : autoRefValues(maxDataValue);
+	const values = refValues.length > 0 ? [...refValues].sort((a, b) => a - b) : autoRefValues(maxDataValue);
 
 	if (!values.length) return null;
 
@@ -200,7 +199,11 @@ const MapBubbleLegend = ({
 						// the larger ring they're nested in — switch to
 						// `'spread'` if visually overlapping labels are a problem.
 						const topY = svgHeight - 2 * radius;
-						const labelY = labelPosition === 'outside' ? topY - 4 : topY + effectiveFontSize + 2;
+						// A ring too small to hold its label puts it just above
+						// the ring instead of over the shared baseline.
+						const fitsInside = 2 * radius >= 2 * effectiveFontSize + 4;
+						const labelY =
+							labelPosition === 'outside' || !fitsInside ? topY - 3 : topY + effectiveFontSize + 2;
 						const handleClick = onLegendItemClick
 							? (e: React.MouseEvent<SVGGElement>) =>
 									onLegendItemClick(itemKey, displayText, e.currentTarget)

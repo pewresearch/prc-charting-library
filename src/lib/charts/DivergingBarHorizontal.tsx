@@ -253,6 +253,17 @@ const DivergingBarHorizontal = () => {
 		[divergingBar.secondary, seriesStyles]
 	);
 
+	// An outline-only overlay has no fill to show, so tooltip text and legend
+	// swatches take its stroke instead of rendering transparent.
+	const secondaryLabelColor = useCallback(
+		(category: string) => {
+			const paint = resolveSecondaryPaint(category);
+			const fill = paint.fill ?? 'none';
+			return 'none' === fill || 'transparent' === fill ? (paint.stroke ?? fill) : fill;
+		},
+		[resolveSecondaryPaint]
+	);
+
 	const colorScale = useMemo(() => {
 		const domain = [...divergingBar.negativeCategories, ...divergingBar.positiveCategories];
 		const range = [...colors];
@@ -266,13 +277,12 @@ const DivergingBarHorizontal = () => {
 				...divergingBar.secondary.negativeCategories,
 				...divergingBar.secondary.positiveCategories,
 			];
-			const secondaryFills = secondaryCats.map((cat) => resolveSecondaryPaint(cat).fill ?? 'none');
 			domain.push(...secondaryCats);
-			range.push(...secondaryFills);
+			range.push(...secondaryCats.map(secondaryLabelColor));
 		}
 
 		return scaleOrdinal<string, string>({ domain, range });
-	}, [divergingBar, colors, tooltip.mode, resolveSecondaryPaint]);
+	}, [divergingBar, colors, tooltip.mode, secondaryLabelColor]);
 
 	if (divergingBar.neutralBar.active) {
 		dependentScale.rangeRound([0, innerWidth * divergingBar.percentOfInnerWidth]);
@@ -1209,11 +1219,11 @@ const DivergingBarHorizontal = () => {
 													if (raw === null || raw === undefined) return null;
 													const val = typeof raw === 'number' ? Math.abs(raw) : raw;
 													const { body: customBody } = getCustomTooltip(tooltipData, cat);
-													const secondaryFill =
+													const secondaryColor =
 														secondaryActive &&
 														(divergingBar.secondary!.positiveCategories.includes(cat) ||
 															divergingBar.secondary!.negativeCategories.includes(cat))
-															? resolveSecondaryPaint(cat).fill
+															? secondaryLabelColor(cat)
 															: undefined;
 													const html = customBody
 														? customBody
@@ -1224,7 +1234,7 @@ const DivergingBarHorizontal = () => {
 																	category: cat,
 																	color: resolveCategoryColor({
 																		category: cat,
-																		fallback: secondaryFill ?? colorScale(cat),
+																		fallback: secondaryColor ?? colorScale(cat),
 																		dataRender,
 																	}),
 																	data: tooltipData,

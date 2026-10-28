@@ -133,6 +133,8 @@ const MapGeoPointLayer = ({
 					const { body: _tip, header: _hdr } = getCustomTooltip(row, sizeCategory);
 					showTooltip({
 						tooltipData: {
+							// Row columns become {{Column}} tooltip tokens.
+							...row,
 							x: name,
 							id,
 							y: isLocator ? undefined : val,
