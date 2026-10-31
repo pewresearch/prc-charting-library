@@ -14,7 +14,7 @@
  * Version:           3.16.0
  * Requires at least: 6.2
  * Requires PHP:      8.0
- * Requires Plugins:  prc-scripts
+ * Requires Plugins:  prc-shared
  * Author:            Pew Research Center
  * Author URI:        https://pewresearch.org
  * Text Domain:       prc-charting-library

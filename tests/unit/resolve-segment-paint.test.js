@@ -3,7 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
 	generateSegmentKey,
 	resolveSegmentPaint,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolveSegmentPaint';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolveSegmentPaint';
 
 describe('generateSegmentKey', () => {
 	it('joins start, end, and category with Date ISO strings', () => {

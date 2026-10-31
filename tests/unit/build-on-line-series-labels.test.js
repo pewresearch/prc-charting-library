@@ -5,8 +5,8 @@
  * lines that merely cross near the middle looked crowded even when they were
  * far apart everywhere else (Singapore: Hindus vs Other religions).
  */
-import { buildOnLineSeriesLabels } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/labelLayout/buildOnLineSeriesLabels';
-import { computeLabelDeclutter } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/labelLayout/computeLabelDeclutter';
+import { buildOnLineSeriesLabels } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/labelLayout/buildOnLineSeriesLabels';
+import { computeLabelDeclutter } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/labelLayout/computeLabelDeclutter';
 
 const INNER_WIDTH = 700;
 const INNER_HEIGHT = 500;

@@ -5,7 +5,7 @@
  * Buddhist share of 0.04% rounds to "0.0%" — which reads as "none" and is
  * false. The floor makes it read "<0.1%" instead.
  */
-import { formatMinDisplayValue } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/formatMinDisplayValue';
+import { formatMinDisplayValue } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/formatMinDisplayValue';
 
 const PERCENT = {
 	minDisplayValue: 0.1,

@@ -2,7 +2,7 @@ import {
 	fitWaffleCellSize,
 	resolveWaffleCellSize,
 	waffleSpanFactor,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/waffle/resolveWaffleCellSize';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/waffle/resolveWaffleCellSize';
 
 describe('resolveWaffleCellSize', () => {
 	it('computes span factor from columns and gap', () => {

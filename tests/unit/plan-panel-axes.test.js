@@ -1,4 +1,4 @@
-import { planPanelAxes } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/planPanelAxes';
+import { planPanelAxes } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/planPanelAxes';
 
 describe('planPanelAxes', () => {
 	const base = {

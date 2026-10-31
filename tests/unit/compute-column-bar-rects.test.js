@@ -1,4 +1,4 @@
-import { computeColumnBarRects, resolveBandDomain } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/computeColumnBarRects';
+import { computeColumnBarRects, resolveBandDomain } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/computeColumnBarRects';
 
 describe('resolveBandDomain', () => {
 	it('collects unique x values in first-seen order across panels', () => {

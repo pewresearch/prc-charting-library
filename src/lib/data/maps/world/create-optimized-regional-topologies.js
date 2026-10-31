@@ -22,7 +22,7 @@ const CONTINENTS_PATH = path.join(DIR, 'country-continents.json');
 // a preset entry. See reportMissingPresets().
 const MAP_REGION_PRESETS_PATH = path.resolve(
 	DIR,
-	'../../../../../../../plugins/prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/mapRegionPresets.ts'
+	'../../../../../../../plugins/prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/mapRegionPresets.ts'
 );
 
 /** Countries that span multiple continents or cross the antimeridian — exclude from buffer zones. */

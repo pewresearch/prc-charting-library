@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import { facetDataByGroup } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByGroup';
+import { facetDataByGroup } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByGroup';
 
 const demoRows = [
 	{ x: 2022, Reliable: 83, 'Not Reliable': 31, Country: 'Sweden' },

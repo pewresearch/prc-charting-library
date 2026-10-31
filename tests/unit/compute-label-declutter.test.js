@@ -4,7 +4,7 @@
  * The Israel religious-composition chart packs five of seven series into the
  * bottom ~13px of the plot, which is the worst case for the label layout.
  */
-import { computeLabelDeclutter } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/labelLayout/computeLabelDeclutter';
+import { computeLabelDeclutter } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/labelLayout/computeLabelDeclutter';
 
 const FONT_SIZE = 12;
 const INNER_HEIGHT = 290;

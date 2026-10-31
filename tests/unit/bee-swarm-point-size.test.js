@@ -2,7 +2,7 @@
 import { beforeAll, describe, expect, jest, test } from '@jest/globals';
 import { createElement } from 'react';
 import { render } from '@testing-library/react';
-import { DataProvider, baseConfig } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities';
+import { DataProvider, baseConfig } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities';
 import BeeSwarm from '../../src/lib/charts/BeeSwarm';
 
 beforeAll(() => {

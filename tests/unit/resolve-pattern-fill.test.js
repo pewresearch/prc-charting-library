@@ -1,5 +1,5 @@
-import { resolvePatternFill } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolvePatternFill';
-import { resolveBarPaint } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolveShapePaint';
+import { resolvePatternFill } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolvePatternFill';
+import { resolveBarPaint } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolveShapePaint';
 
 describe('resolvePatternFill', () => {
 	test('a striped series mark fills with the pattern def url', () => {

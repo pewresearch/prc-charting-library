@@ -1,5 +1,5 @@
-import { resolveLabelStyle } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolveLabelStyle';
-import { resolveLinePathPaint } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolvePaint';
+import { resolveLabelStyle } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolveLabelStyle';
+import { resolveLinePathPaint } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolvePaint';
 
 describe('resolveLabelStyle', () => {
 	it('prefers the series font weight over the chart default', () => {

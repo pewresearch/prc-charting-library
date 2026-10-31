@@ -1,4 +1,4 @@
-import { computeWafflePanelRatios } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/waffle/computeWafflePanelRatios';
+import { computeWafflePanelRatios } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/waffle/computeWafflePanelRatios';
 
 describe('computeWafflePanelRatios', () => {
 	it('returns panel percentages that sum to 100', () => {

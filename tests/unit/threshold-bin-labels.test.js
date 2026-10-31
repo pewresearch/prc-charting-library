@@ -1,12 +1,12 @@
 import { describe, expect, test } from '@jest/globals';
-import { resolveBinPaint } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/heatMapTable/createValueColorScale';
+import { resolveBinPaint } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/heatMapTable/createValueColorScale';
 import {
 	getThresholdLegendLabels,
 	mapScaleStyleKey,
 	thresholdBinLabel,
 	thresholdLabelFill,
 	thresholdLegendItems,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/heatMapTable/thresholdLegendLabels';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/heatMapTable/thresholdLegendLabels';
 
 describe('threshold bin labels', () => {
 	test('builds the same language as the color sorter', () => {

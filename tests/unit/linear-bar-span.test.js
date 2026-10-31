@@ -2,7 +2,7 @@ import { scaleLinear } from '@visx/scale';
 import {
 	linearBarSpan,
 	linearBarBaseline,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/compute/linearBarSpan';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/linearBarSpan';
 
 describe('linearBarSpan', () => {
 	it('matches visx when the domain min is 0 (vertical)', () => {

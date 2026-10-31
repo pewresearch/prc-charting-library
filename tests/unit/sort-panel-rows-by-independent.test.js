@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
-import { facetDataByGroup } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByGroup';
-import { sortPanelRowsByIndependent } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/sortPanelRowsByIndependent';
-import { getFirstLastLabelPlacement } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/labelLayout/buildLineChartLabels';
+import { facetDataByGroup } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByGroup';
+import { sortPanelRowsByIndependent } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/sortPanelRowsByIndependent';
+import { getFirstLastLabelPlacement } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/labelLayout/buildLineChartLabels';
 
 // Table blocks keep author row order, which is often newest first.
 const descendingRows = [

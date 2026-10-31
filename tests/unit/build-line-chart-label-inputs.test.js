@@ -1,5 +1,5 @@
-import { buildLineChartLabelInputs } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/labelLayout/buildLineChartLabels';
-import { computeLabelDeclutter } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/labelLayout/computeLabelDeclutter';
+import { buildLineChartLabelInputs } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/labelLayout/buildLineChartLabels';
+import { computeLabelDeclutter } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/labelLayout/computeLabelDeclutter';
 
 const labels = {
 	active: true,

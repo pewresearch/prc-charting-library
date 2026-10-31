@@ -1,7 +1,7 @@
 import {
 	canonicalRowValue,
 	selectPlotRows,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/compute/selectPlotRows';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/selectPlotRows';
 
 describe('selectPlotRows', () => {
 	const yearRows = [

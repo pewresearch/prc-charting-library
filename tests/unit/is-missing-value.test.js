@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import {
 	hasCategoryValue,
 	isMissingValue,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/helpers';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/helpers';
 
 describe('isMissingValue', () => {
 	test('undefined, null, and empty string are missing; zero is a value', () => {

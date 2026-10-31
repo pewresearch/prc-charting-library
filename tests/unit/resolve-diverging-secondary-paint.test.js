@@ -1,4 +1,4 @@
-import { resolveDivergingSecondaryPaint } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolveShapePaint';
+import { resolveDivergingSecondaryPaint } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolveShapePaint';
 
 describe('resolveDivergingSecondaryPaint', () => {
 	test('keeps legacy category styles while seriesStyles takes priority per field', () => {

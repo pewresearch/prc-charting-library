@@ -1,4 +1,4 @@
-import { resolvePanelRect } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/resolvePanelRect';
+import { resolvePanelRect } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/resolvePanelRect';
 
 const panels = [{ key: 'Chrome' }, { key: 'IE' }, { key: 'Firefox' }];
 const rects = [

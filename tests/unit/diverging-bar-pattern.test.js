@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { render } from '@testing-library/react';
-import { DataProvider, baseConfig } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities';
+import { DataProvider, baseConfig } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities';
 import DivergingBarHorizontal from '../../src/lib/charts/DivergingBarHorizontal';
 import DivergingBarVertical from '../../src/lib/charts/DivergingBarVertical';
 

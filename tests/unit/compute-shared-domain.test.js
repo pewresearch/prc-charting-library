@@ -1,4 +1,4 @@
-import { computeSharedDomain } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/computeSharedDomain';
+import { computeSharedDomain } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/computeSharedDomain';
 
 describe('computeSharedDomain', () => {
 	const panels = [

@@ -4,7 +4,7 @@
  * A column is one x-position with every series that has a value there. The
  * projections charts hover a year and read all seven religions at once.
  */
-import { buildUnifiedTooltipColumns } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/unifiedTooltip/buildUnifiedTooltipColumns';
+import { buildUnifiedTooltipColumns } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/unifiedTooltip/buildUnifiedTooltipColumns';
 
 const ROWS = [
 	{ x: 2020, Muslims: 25.1, Christians: 30.4 },

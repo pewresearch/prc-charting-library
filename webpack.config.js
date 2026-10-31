@@ -37,7 +37,7 @@ const { requestToExternal, requestToExternalModule, requestToHandle } = require(
 const chartingUtilitiesAlias = {
 	'@prc/charting-utilities': path.resolve(
 		__dirname,
-		'../prc-scripts/includes/scripts/src/@prc/charting-utilities/index.ts'
+		'../prc-shared/includes/scripts/src/@prc/charting-utilities/index.ts'
 	),
 };
 

@@ -1,7 +1,7 @@
 import {
 	computeWaffleCells,
 	resolveWaffleMax,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/waffle/computeWaffleCells';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/waffle/computeWaffleCells';
 
 describe('computeWaffleCells', () => {
 	it('allocates exactly 100 filled cells when whole max equals the sum', () => {

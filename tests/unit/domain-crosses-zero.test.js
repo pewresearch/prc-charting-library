@@ -1,4 +1,4 @@
-import { domainCrossesZero } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/compute/domainCrossesZero';
+import { domainCrossesZero } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/domainCrossesZero';
 
 describe('domainCrossesZero', () => {
 	it('is true when the domain has values on both sides of zero', () => {

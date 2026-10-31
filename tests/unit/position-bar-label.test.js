@@ -2,7 +2,7 @@
  * Bar labels anchor to the value tip, not the baseline. Tip edge comes from
  * linearBarSpan geometry (`valueAtStart`), not value sign alone.
  */
-import { positionBarLabel } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/compute/labels';
+import { positionBarLabel } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/labels';
 
 const OUTSIDE = {
 	labelPositionDX: 0,

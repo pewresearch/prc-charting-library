@@ -1,7 +1,7 @@
 /**
  * Tooltip values against a display floor, plus template-over-format precedence.
  */
-import { getTooltipFormat } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/compute/tooltips';
+import { getTooltipFormat } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/tooltips';
 
 const PERCENT_TOOLTIP = {
 	format: '{{row}}: {{value}}%',

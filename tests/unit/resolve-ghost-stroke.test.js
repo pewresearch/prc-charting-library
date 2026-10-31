@@ -1,4 +1,4 @@
-import { resolveGhostStroke } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/resolveGhostStroke';
+import { resolveGhostStroke } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/resolveGhostStroke';
 
 describe('resolveGhostStroke', () => {
 	it('prefers dataRender deselectedColor over smallMultiples.ghost.stroke', () => {

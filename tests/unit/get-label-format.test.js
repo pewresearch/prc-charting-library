@@ -1,7 +1,7 @@
 /**
  * Label values against a display floor.
  */
-import { getLabelFormat } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/compute/labels';
+import { getLabelFormat } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/labels';
 
 const PERCENT_LABEL = {
 	absoluteValue: false,

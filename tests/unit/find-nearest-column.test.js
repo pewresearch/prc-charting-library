@@ -3,7 +3,7 @@
  * so the tooltip is live anywhere in the column including empty space above
  * every line.
  */
-import { findNearestColumn } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/unifiedTooltip/findNearestColumn';
+import { findNearestColumn } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/unifiedTooltip/findNearestColumn';
 
 const COLUMNS = [
 	{ px: 0, xValue: 2020, entries: [], ruleTop: 0, ruleBottom: 0 },

@@ -1,4 +1,4 @@
-import { shouldShowLinePoint } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/shouldShowLinePoint';
+import { shouldShowLinePoint } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/shouldShowLinePoint';
 
 describe('shouldShowLinePoint', () => {
 	const allPoints = [0, 1, 2, 3];

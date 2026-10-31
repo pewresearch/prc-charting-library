@@ -1,9 +1,9 @@
-import { resolvePointSize } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolvePointSize';
-import { resolveLinePathPaint } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolvePaint';
+import { resolvePointSize } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolvePointSize';
+import { resolveLinePathPaint } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolvePaint';
 import {
 	createPointRadiusScale,
 	resolvePointRadius,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/getPointRadiusScale';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/getPointRadiusScale';
 
 describe('resolvePointSize', () => {
 	it('prefers the series point size over the chart default', () => {

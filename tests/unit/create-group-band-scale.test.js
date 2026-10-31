@@ -1,5 +1,5 @@
 import { scaleBand } from '@visx/scale';
-import { createGroupBandScale } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/compute/data';
+import { createGroupBandScale } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/data';
 
 const PADDING = 0.2;
 const PLOT_SIZE = 400;

@@ -487,7 +487,7 @@ feature requests, please open an issue in the
 
 ## Related Packages
 
-- **[@prc/charting-utilities](../prc-scripts/includes/scripts/src/@prc/charting-utilities/)** -
+- **[@prc/charting-utilities](../prc-shared/includes/scripts/src/@prc/charting-utilities/)** -
   Shared utilities, types, and hooks
 - **@prc/block-library** - WordPress blocks that use these charts
 - **@prc/platform-core** - Core PRC Platform functionality

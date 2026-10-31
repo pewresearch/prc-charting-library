@@ -2,7 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
 	generateTickLabelKey,
 	resolveTickLabelEntry,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/tickLabelKeys';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/tickLabelKeys';
 
 describe('resolveTickLabelEntry', () => {
 	it('keeps a panel-scoped tick label out of the other panels', () => {

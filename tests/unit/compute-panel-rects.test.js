@@ -2,7 +2,7 @@ import {
 	computePanelRects,
 	computeGridHeight,
 	resolveEffectiveColumns,
-} from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/smallMultiples/computePanelRects';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/computePanelRects';
 
 describe('resolveEffectiveColumns', () => {
 	it('returns the requested columns when the chart is wide enough', () => {

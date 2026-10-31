@@ -1,4 +1,4 @@
-import { resolveShapePaint } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/utilities/resolveShapePaint';
+import { resolveShapePaint } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/resolveShapePaint';
 
 describe('resolveShapePaint', () => {
 	it('falls back to defaults when no custom styles are set', () => {

@@ -1,4 +1,4 @@
-import { getGroupColorDomain } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/compute/groupColorDomain';
+import { getGroupColorDomain } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/groupColorDomain';
 
 const scatterGroups = [
 	{ Grouping: 'North America' },

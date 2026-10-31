@@ -1,4 +1,4 @@
-import { computeWaffleLayout } from '../../../prc-scripts/includes/scripts/src/@prc/charting-utilities/waffle/computeWaffleLayout';
+import { computeWaffleLayout } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/waffle/computeWaffleLayout';
 
 describe('computeWaffleLayout', () => {
 	it('keeps cell size fixed when columns change', () => {
