@@ -1,5 +1,5 @@
 // REACT
-import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef } from 'react';
+import { RefObject, useCallback, useContext, useMemo, useRef } from 'react';
 
 // @prc/charting-utilities
 import {
@@ -258,7 +258,12 @@ const BarHorizontal = () => {
 
 	return (
 		<TransitionProvider data={data} family="bar">
-			<div style={{ position: 'relative' }}>
+			<div
+				style={{
+					position: 'relative',
+					...(overflow === 'scroll' ? { overflowX: 'scroll' as const } : {}),
+				}}
+			>
 				<svg
 					width={chartWidth}
 					height={dataRender.groupBreaksActive ? actualContentHeight + padding.top + padding.bottom : height}
@@ -318,9 +323,6 @@ const BarHorizontal = () => {
 											y1Scale={keyScale}
 											xScale={dependentScale}
 											color={colorScale}
-											style={{
-												overflowX: overflow as CSSProperties['overflowX'],
-											}}
 										>
 											{(barGroups) => {
 												return barGroups.map((barGroup, i) => {

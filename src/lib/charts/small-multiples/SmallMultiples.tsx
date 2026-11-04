@@ -176,7 +176,7 @@ const SmallMultiples = () => {
 	const { width, parentClass, overflowX, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
 	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
-	const { chartWidth, innerWidth } = getChartDimensions(size, layout);
+	const { chartWidth, innerWidth, overflow } = getChartDimensions(size, layout);
 	const padLeft = padding?.left ?? 0;
 	const padTop = padding?.top ?? 0;
 	const padBottom = padding?.bottom ?? 0;
@@ -597,7 +597,10 @@ const SmallMultiples = () => {
 			<div
 				style={{
 					position: 'relative',
-					overflowX: overflowX as React.CSSProperties['overflowX'],
+					// Line.tsx uses getChartDimensions().overflow ("scroll" | "clip").
+					// Keep the raw layout value for responsive and
+					// preserve-aspect-ratio so those modes do not start clipping.
+					overflowX: (overflow === 'scroll' ? overflow : overflowX) as React.CSSProperties['overflowX'],
 				}}
 			>
 				<svg

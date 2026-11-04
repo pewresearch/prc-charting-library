@@ -52,7 +52,7 @@ const Radar = () => {
 	const { width, height, parentClass, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
 	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
-	const { chartWidth, innerWidth, innerHeight } = getChartDimensions(size, layout);
+	const { chartWidth, innerWidth, innerHeight, overflow } = getChartDimensions(size, layout);
 
 	const isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
 
@@ -138,7 +138,12 @@ const Radar = () => {
 	);
 
 	return (
-		<div style={{ position: 'relative' }}>
+		<div
+			style={{
+				position: 'relative',
+				...(overflow === 'scroll' ? { overflowX: 'scroll' as const } : {}),
+			}}
+		>
 			<svg
 				width={chartWidth}
 				height={height}
@@ -400,12 +405,14 @@ const Radar = () => {
 						dangerouslySetInnerHTML={{
 							__html:
 								getCustomTooltip(tooltipData, 'polygon').body ||
-								getTooltipFormat({
+								getTooltipFormat(
+									{
 										x: tooltipData[dataRender.x],
 										y: null,
 										category: 'polygon',
 										color: colorScale(String(tooltipData[dataRender.x])),
-										data: tooltipData,},
+										data: tooltipData,
+									},
 									tooltip,
 									dataRender
 								),
