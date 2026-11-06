@@ -769,6 +769,7 @@ const World = () => {
 													category: tooltipData.key,
 													color: tooltipData.fill,
 													data: tooltipData,
+													series: tooltipData.category,
 												},
 												tooltip,
 												dataRender
