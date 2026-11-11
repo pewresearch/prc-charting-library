@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Tooltip as BaseTooltipType } from '@prc/charting-utilities';
+import { svgUserPointToViewport, Tooltip as BaseTooltipType } from '@prc/charting-utilities';
 
 type TooltipProps = {
 	tooltip: BaseTooltipType;
@@ -31,10 +31,11 @@ const positionWithinChart = (
 	size: BoxSize,
 	chartRect: DOMRect,
 	offsetX: number,
-	offsetY: number
+	offsetY: number,
+	viewport: Window
 ) => {
 	const minLeft = Math.max(chartRect.left, 0);
-	const maxRight = Math.min(chartRect.right, window.innerWidth);
+	const maxRight = Math.min(chartRect.right, viewport.innerWidth);
 
 	let left = anchorX + offsetX;
 	if (left + size.width > maxRight) {
@@ -43,13 +44,21 @@ const positionWithinChart = (
 	left = Math.max(left, minLeft);
 
 	let top = anchorY + offsetY;
-	if (top + size.height > window.innerHeight) {
+	if (top + size.height > viewport.innerHeight) {
 		top = anchorY - offsetY - size.height;
 	}
 	top = Math.max(top, 0);
 
 	return { top, left };
 };
+
+function getTooltipViewport(container: Element | null | undefined): Window {
+	return container?.ownerDocument?.defaultView ?? window;
+}
+
+function getTooltipPortalRoot(container: Element | null | undefined): Element {
+	return container?.ownerDocument?.body ?? document.body;
+}
 
 // Calculate optimal tooltip position relative to cursor.
 //
@@ -165,19 +174,23 @@ export const StyledTooltip = ({
 	// Portaled like desktop so the chart wrapper's overflow (clip or scroll)
 	// cannot cut a tall box off, but flipped within the chart's bounds.
 	if (isMobile) {
-		const chartRect = containerRef?.current?.getBoundingClientRect();
+		const container = containerRef?.current;
+		const viewport = getTooltipViewport(container);
+		const chartRect = container?.getBoundingClientRect();
 		const size = measuredSize ?? {
 			width: typeof width === 'number' ? width : 200,
 			height: typeof minHeight === 'number' ? minHeight : 50,
 		};
+		const anchorViewport = svgUserPointToViewport(container, horizontalX ?? left, cursorY ?? top);
 		const mobilePosition = chartRect
 			? positionWithinChart(
-					(horizontalX ?? left) + chartRect.left,
-					(cursorY ?? top) + chartRect.top,
+					anchorViewport.x,
+					anchorViewport.y,
 					size,
 					chartRect,
 					tooltip.offsetX,
-					tooltip.offsetY
+					tooltip.offsetY,
+					viewport
 				)
 			: { top, left };
 
@@ -194,41 +207,40 @@ export const StyledTooltip = ({
 			>
 				{children}
 			</div>,
-			document.body
+			getTooltipPortalRoot(container)
 		);
 	}
 
-	// On desktop, use portal for better positioning in constrained containers
-	// Portal needs viewport coordinates, so convert SVG-relative to viewport
+	// On desktop, use portal for better positioning in constrained containers.
+	// Portal needs viewport coordinates: project SVG user space via getScreenCTM.
+	const container = containerRef?.current;
+	const viewport = getTooltipViewport(container);
 	const getDesktopPosition = () => {
 		if (horizontalX !== undefined && cursorY !== undefined) {
-			// Convert SVG-relative cursor coordinates to viewport coordinates
-			if (!containerRef?.current) {
+			if (!container) {
 				return { top: cursorY, left: horizontalX }; // Fallback
 			}
-			const rect = containerRef.current.getBoundingClientRect();
-			const viewportX = horizontalX + rect.left;
-			const viewportY = cursorY + rect.top;
+			const anchorViewport = svgUserPointToViewport(container, horizontalX, cursorY);
 			return calculateTooltipPosition(
-				viewportX,
-				viewportY,
+				anchorViewport.x,
+				anchorViewport.y,
 				typeof width === 'number' ? width : 200,
 				typeof minHeight === 'number' ? minHeight : 50,
-				window.innerWidth,
-				window.innerHeight
+				viewport.innerWidth,
+				viewport.innerHeight
 			);
 		}
-		if (containerRef?.current) {
+		if (container) {
 			// Convert SVG-relative coordinates to viewport coordinates.
 			//
 			// Pre-existing and deliberately left alone: this branch
 			// never adds the plot padding, so a data-anchored caller
 			// such as StackedArea is offset by it. `Line` masks it by
 			// always sending cursor coordinates.
-			const rect = containerRef.current.getBoundingClientRect();
+			const anchorViewport = svgUserPointToViewport(container, left, top);
 			return {
-				top: top + rect.top,
-				left: left + rect.left,
+				top: anchorViewport.y,
+				left: anchorViewport.x,
 			};
 		}
 		// Fallback: use coordinates as-is
@@ -250,6 +262,5 @@ export const StyledTooltip = ({
 		</div>
 	);
 
-	// Render tooltip in a portal at document body level
-	return createPortal(tooltipElement, document.body);
+	return createPortal(tooltipElement, getTooltipPortalRoot(container));
 };
