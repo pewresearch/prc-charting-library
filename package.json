@@ -1,6 +1,6 @@
 {
 	"name": "@prc/charting-library",
-	"version": "3.16.6",
+	"version": "3.16.7",
 	"main": "export.js",
 	"types": "src/index.d.ts",
 	"files": [
@@ -22,7 +22,7 @@
 		"directory": "plugins/prc-charting-library"
 	},
 	"description": "PRC Charting Library is a library for PRC Platform that provides a charting for the block editor.",
-	"author": "Pew Research Center",
+	"author": "Benjamin Wormald",
 	"contributors": [
 		"Benjamin Wormald"
 	],

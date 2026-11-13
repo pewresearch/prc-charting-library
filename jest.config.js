@@ -1,11 +1,22 @@
 /**
- * Jest configuration for charting-library plugin
+ * Jest configuration for charting-library plugin.
+ * New unit tests live under monorepo root tests/prc-charting-library/unit/.
+ * The plugin-local tests/ directory is the older suite.
  */
+const path = require('path');
+
+const pluginTests = path.resolve(__dirname, 'tests');
+const unitRoot = path.resolve(__dirname, '../../tests/prc-charting-library/unit');
+
 module.exports = {
 	...require('@wordpress/scripts/config/jest-unit.config'),
-	testMatch: ['**/tests/**/*.test.js'],
+	rootDir: path.resolve(__dirname, '../..'),
+	roots: [pluginTests, unitRoot],
+	testMatch: ['**/*.test.js'],
 	moduleNameMapper: {
-		'\\.(scss|css)$': '<rootDir>/tests/__mocks__/styleMock.js',
+		'\\.(scss|css)$': path.join(pluginTests, '__mocks__/styleMock.js'),
+		'^@prc/charting-utilities$':
+			'<rootDir>/plugins/prc-shared/includes/scripts/src/@prc/charting-utilities/index.ts',
 	},
 	transform: {
 		'^.+\\.(js|jsx|ts|tsx)$': require.resolve('@wordpress/scripts/config/babel-transform'),

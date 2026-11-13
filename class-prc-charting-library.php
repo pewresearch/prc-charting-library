@@ -3,7 +3,7 @@
  * PRC Charting Library plugin bootstrap.
  *
  * @package           PRC_Charting_Library
- * @author            Pew Research Center
+ * @author            Benjamin Wormald
  * @copyright         2023-2026 Pew Research Center
  * @license           MIT
  *
@@ -15,7 +15,7 @@
  * Requires at least: 6.2
  * Requires PHP:      8.0
  * Requires Plugins:  prc-shared
- * Author:            Pew Research Center
+ * Author:            Benjamin Wormald
  * Author URI:        https://pewresearch.org
  * Text Domain:       prc-charting-library
  * License:           MIT

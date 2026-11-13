@@ -12,7 +12,7 @@ const TILE = 8;
 
 // Hatch marks sit on top of the mark's own fill, so they need to contrast
 // with it. A spec that sets `stroke` or `fill` overrides this.
-const HATCH_PAINT = "light-dark('#ffffff', '#000000')";
+const HATCH_PAINT = 'light-dark(#ffffff, #000000)';
 
 function lineOrientation(spec: Extract<PatternSpec, { type: 'lines' | 'striped' | 'crosshatch' }>) {
 	if (spec.orientation) {
