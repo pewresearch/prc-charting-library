@@ -19,6 +19,8 @@ import {
 	getLocalPoint,
 	getSharedProps,
 	getFlattenedData,
+	INERT_SERIES_MASK,
+	useDismissTooltipOnSeriesMask,
 	getGroupedData,
 	getGroupPositioningPie,
 	resolveShapePaint,
@@ -40,7 +42,7 @@ import {
 	PieRevealProvider,
 	PIE_FULL_TURN,
 } from '../animation';
-import type { FlatData, Size, BaseConfig, TableData, CategoryStyle } from '@prc/charting-utilities';
+import type { FlatData, SeriesMaskView, Size, BaseConfig, TableData, CategoryStyle } from '@prc/charting-utilities';
 
 import { Pie as VisxPie } from '@visx/shape';
 import { Group } from '@visx/group';
@@ -49,12 +51,13 @@ import { useTooltip } from '@visx/tooltip';
 import { scaleOrdinal } from '@visx/scale';
 
 const Pie = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -103,6 +106,11 @@ const Pie = () => {
 
 	// DATA PROCESSING
 	const flattenedData = useMemo(() => getFlattenedData(data), [data]);
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const plotData = useMemo(
+		() => flattenedData.filter((row) => !seriesMaskView.isHidden(String(row.x))),
+		[flattenedData, seriesMaskView]
+	);
 
 	// ACCESSORS
 	const getIndependentValue = (d: any) => d.x;
@@ -110,7 +118,7 @@ const Pie = () => {
 	const getDependentValue = useMemo(() => (d: any) => d[category], [category]);
 
 	// GROUP BREAKS PROCESSING
-	const groupedData = useMemo(() => getGroupedData(flattenedData, dataRender), [flattenedData, dataRender]);
+	const groupedData = useMemo(() => getGroupedData(plotData, dataRender), [plotData, dataRender]);
 
 	// PIE GROUP POSITIONING - Calculate angular positions for each group
 	const pieGroupPositioning = useMemo(
@@ -176,6 +184,7 @@ const Pie = () => {
 		hideTooltip,
 		showTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 	let tooltipTimeout: number;
 
 	return (
@@ -405,7 +414,7 @@ const Pie = () => {
 						) : (
 							// UNGROUPED PIE: Original single pie rendering
 							<VisxPie
-								data={flattenedData}
+								data={plotData}
 								pieValue={getDependentValue}
 								pieSortValues={pieSortValues}
 								outerRadius={radius}
@@ -634,7 +643,7 @@ const Pie = () => {
 							) : (
 								// UNGROUPED: Original draggable category labels
 								<VisxPie
-									data={flattenedData}
+									data={plotData}
 									pieValue={getDependentValue}
 									pieSortValues={pieSortValues}
 									innerRadius={radius + 20}

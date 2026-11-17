@@ -21,10 +21,13 @@
  */
 
 import {
+	alignItemsFromVerticalAnchor,
 	contrastLabelFillForLightDark,
 	DataContext,
 	categoryKeyFromLegendDatum,
+	legendLabelTextStyle,
 	parseRichText,
+	resolveLegendTextAnchor,
 	stripRichText,
 	type BaseConfig,
 	type CategoryStyle,
@@ -48,28 +51,22 @@ import {
 	type LegendPositioningContext,
 } from './Legend';
 
-function getLegendParagraphStyles(customEntry?: LegendItemCustomization): React.CSSProperties {
-	if (!customEntry) {
-		return {};
+function combinedLegendOpacity(hideOpacity: number, textOpacity?: number): number {
+	if (typeof textOpacity !== 'number' || Number.isNaN(textOpacity)) {
+		return hideOpacity;
 	}
+	return hideOpacity * textOpacity;
+}
 
-	const styles: React.CSSProperties = {};
+function legendRotationTransform(rotation?: number): string | undefined {
+	if (!rotation) {
+		return undefined;
+	}
+	return `rotate(${rotation}deg)`;
+}
 
-	if (customEntry.lineHeight) {
-		styles.lineHeight = customEntry.lineHeight;
-	}
-	if (customEntry.textAlign) {
-		styles.textAlign = customEntry.textAlign;
-	}
-	if (customEntry.letterSpacing !== undefined && customEntry.letterSpacing !== null) {
-		styles.letterSpacing = `${customEntry.letterSpacing}px`;
-	}
-	if (customEntry.maxWidth) {
-		styles.whiteSpace = 'normal';
-		styles.overflowWrap = 'break-word';
-	}
-
-	return styles;
+function legendItemAlign(customEntry?: LegendItemCustomization): React.CSSProperties['alignItems'] {
+	return alignItemsFromVerticalAnchor(customEntry?.verticalAnchor) ?? 'center';
 }
 
 type LabelDatum = {
@@ -351,7 +348,6 @@ function DetachedLegendItem({
 		top: position.y,
 		display: 'flex',
 		flexDirection: presentation.itemDirection as any,
-		alignItems: 'center',
 		fontSize: customEntry?.fontSize ? `${customEntry.fontSize}px` : undefined,
 		// In label mode the text IS the legend visual — color it with the series color,
 		// unless the editor has set an explicit per-item color override.
@@ -364,7 +360,10 @@ function DetachedLegendItem({
 		userSelect: 'none',
 		pointerEvents: placeholder ? 'none' : 'auto',
 		cursor,
-		opacity,
+		opacity: combinedLegendOpacity(opacity, customEntry?.opacity),
+		alignItems: legendItemAlign(customEntry),
+		transform: legendRotationTransform(customEntry?.rotation),
+		width: resolveLegendTextAnchor(customEntry) && customEntry?.maxWidth ? `${customEntry.maxWidth}px` : undefined,
 	};
 
 	const inner = (
@@ -381,7 +380,9 @@ function DetachedLegendItem({
 			<LegendItemContent
 				item={item}
 				presentation={presentation}
-				labelStyle={getLegendParagraphStyles(customEntry)}
+				labelStyle={legendLabelTextStyle(customEntry, {
+					labelOwnsWidth: false,
+				})}
 			/>
 		</div>
 	);
@@ -509,7 +510,8 @@ export function ClickableLegend({
 		);
 	}
 
-	// Grouped (default): existing flex container behavior, unchanged.
+	// Grouped (default): one flex container. Per-item text layout matches annotations.
+	const stretchLabels = direction === 'column' || direction === 'column-reverse';
 	return (
 		<div style={{ display: 'flex', flexDirection: direction as any, flexWrap: 'wrap' }}>
 			{visibleLabels.map((label: LabelDatum, i: number) => {
@@ -539,15 +541,26 @@ export function ClickableLegend({
 								fontWeight: customEntry?.fontWeight || undefined,
 								fontStyle: customEntry?.fontStyle || undefined,
 								fontFamily: customEntry?.fontFamily || undefined,
-								maxWidth: customEntry?.maxWidth ? `${customEntry.maxWidth}px` : undefined,
 								WebkitTextStroke: groupedOutlineColor ? `0.5px ${groupedOutlineColor}` : undefined,
-								...getLegendParagraphStyles(customEntry),
+								...legendLabelTextStyle(customEntry, { stretch: stretchLabels }),
 							}
 						: undefined;
 
 				return (
-					<div key={`legend-item-${item.itemKey}-${i}`} {...activation}>
-						<LegendItem margin={perItemMargin} flexDirection={itemDirection as any} alignItems="center">
+					<div
+						key={`legend-item-${item.itemKey}-${i}`}
+						{...activation}
+						style={{
+							...activation.style,
+							opacity: combinedLegendOpacity(item.opacity, customEntry?.opacity),
+							transform: legendRotationTransform(customEntry?.rotation),
+						}}
+					>
+						<LegendItem
+							margin={perItemMargin}
+							flexDirection={itemDirection as any}
+							alignItems={legendItemAlign(customEntry)}
+						>
 							<LegendItemContent item={item} presentation={presentation} labelStyle={groupedItemStyle} />
 						</LegendItem>
 					</div>

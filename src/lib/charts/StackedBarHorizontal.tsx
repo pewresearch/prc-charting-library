@@ -1,6 +1,6 @@
 import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef } from 'react';
 
-import type { BaseConfig, FlatData, GroupedData, Size, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, GroupedData, SeriesMaskView, Size, TableData } from '@prc/charting-utilities';
 import {
 	DataContext,
 	generateElementKey,
@@ -29,9 +29,11 @@ import {
 	resolveLabelCutoff,
 	getLinearValueDataExtent,
 	hasExplicitAxisDomain,
+	INERT_SERIES_MASK,
 	resolveLinearScaleDomain,
 	resolveScaleNice,
 	scaleAxisNumTicks,
+	useDismissTooltipOnSeriesMask,
 	useSize,
 } from '@prc/charting-utilities';
 import { DiffColumn } from './DiffColumn';
@@ -58,12 +60,13 @@ import { useTooltip } from '@visx/tooltip';
 import { ascending, descending } from 'd3-array';
 
 const StackedBarHorizontal = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -84,6 +87,10 @@ const StackedBarHorizontal = () => {
 		drawings,
 		seriesStyles,
 	} = config;
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const visibleCategories = seriesMaskView.filterKeys(dataRender.categories) as string[];
+	const plotDataRender =
+		visibleCategories === dataRender.categories ? dataRender : { ...dataRender, categories: visibleCategories };
 
 	// SIZE AND LAYOUT
 	const { height, width, parentClass, padding } = layout;
@@ -151,6 +158,7 @@ const StackedBarHorizontal = () => {
 				// visx would otherwise silently keep d3's default [0, 1].
 				domain: resolveLinearScaleDomain(
 					dependentAxis.domain,
+					// Full series list: a temporary hide must not move the axis.
 					getLinearValueDataExtent(flattenedData, dataRender.categories, { stacked: true })
 				),
 				range: [0, innerWidth],
@@ -226,6 +234,7 @@ const StackedBarHorizontal = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 
 	let tooltipTimeout: number;
 	return (
@@ -272,7 +281,7 @@ const StackedBarHorizontal = () => {
 									<Group top={startY}>
 										<BarStackHorizontal
 											data={groupData}
-											keys={dataRender.categories}
+											keys={visibleCategories}
 											height={groupHeight}
 											y={getIndependentValue}
 											xScale={dependentScale}
@@ -490,7 +499,7 @@ const StackedBarHorizontal = () => {
 											<NetValueLabels
 												items={buildNetValueItemsHorizontalStacked({
 													data: groupData,
-													dataRender,
+													dataRender: plotDataRender,
 													dependentScale,
 													groupScale,
 													getIndependentValue,

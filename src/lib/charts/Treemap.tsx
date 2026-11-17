@@ -2,7 +2,7 @@
 /* eslint-disable max-lines */
 import { CSSProperties, RefObject, useContext, useMemo, useRef } from 'react';
 
-import type { BaseConfig, FlatData, Size, TableData, TreemapTileMethod } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, SeriesMaskView, Size, TableData, TreemapTileMethod } from '@prc/charting-utilities';
 import {
 	DataContext,
 	getChartDimensions,
@@ -16,8 +16,10 @@ import {
 	getSharedProps,
 	getTooltipFormat,
 	getTooltipHeaderFormat,
+	INERT_SERIES_MASK,
 	resolvePatternFill,
 	resolveShapePaint,
+	useDismissTooltipOnSeriesMask,
 	useSize,
 	DEFAULT_FONT_FAMILY,
 } from '@prc/charting-utilities';
@@ -148,12 +150,13 @@ interface TreemapTooltipData {
 }
 
 const TreemapChart = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -180,6 +183,7 @@ const TreemapChart = () => {
 
 	// DATA PROCESSING
 	const flattenedData = useMemo(() => getFlattenedData(data), [data]);
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
 
 	// Determine grouping
 	const groupKey = dataRender.groupBreaksActive ? (dataRender.groupBreaksCategory ?? null) : null;
@@ -198,9 +202,18 @@ const TreemapChart = () => {
 	const sortOrder: 'descending' | 'ascending' | 'none' =
 		(dataRender.sortOrder as 'descending' | 'ascending' | 'none') ?? 'descending';
 
+	const plotData = useMemo(
+		() =>
+			flattenedData.filter((row) => {
+				const key = groupKey ? String(row[groupKey] ?? '') : String(row.x);
+				return !seriesMaskView.isHidden(key);
+			}),
+		[flattenedData, groupKey, seriesMaskView]
+	);
+
 	// Build hierarchy
 	const root = useMemo(() => {
-		const treeData = buildHierarchy(flattenedData, valueKey, groupKey, orderedGroups);
+		const treeData = buildHierarchy(plotData, valueKey, groupKey, orderedGroups);
 		return hierarchy<TreeNode>(treeData)
 			.sum((d) => d.value ?? 0)
 			.sort((a, b) => {
@@ -214,7 +227,7 @@ const TreemapChart = () => {
 				const bv = b.value ?? 0;
 				return sortOrder === 'ascending' ? av - bv : bv - av;
 			});
-	}, [flattenedData, valueKey, groupKey, orderedGroups, sortOrder]);
+	}, [plotData, valueKey, groupKey, orderedGroups, sortOrder]);
 
 	// Get unique group names for color mapping
 	const groupNames = useMemo(() => {
@@ -306,6 +319,7 @@ const TreemapChart = () => {
 		hideTooltip,
 		showTooltip,
 	} = useTooltip<TreemapTooltipData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 	let tooltipTimeout: number;
 
 	// Helper: get color for a leaf node

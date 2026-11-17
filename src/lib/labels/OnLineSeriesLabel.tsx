@@ -3,8 +3,10 @@ import {
 	DataContext,
 	LABEL_OUTLINE_COLOR,
 	DEFAULT_FONT_FAMILY,
+	dominantBaselineFromVerticalAnchor,
 	getDirectLabelOffsetFromCustom,
 	hasAuthorDirectLabelOverride,
+	resolveLegendTextAnchor,
 	wrapRichText,
 } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
@@ -140,7 +142,11 @@ export function OnLineSeriesLabel({
 		]
 	);
 
-	const lineHeight = effectiveFontSize * 1.2;
+	const lineHeight = effectiveFontSize * (customEntry?.lineHeight || 1.2);
+	const textAnchor = resolveLegendTextAnchor(customEntry) ?? 'middle';
+	const dominantBaseline = customEntry?.verticalAnchor
+		? dominantBaselineFromVerticalAnchor(customEntry.verticalAnchor)
+		: 'middle';
 
 	let cursor: 'default' | 'grab' | 'grabbing' = 'default';
 	if (isEditor) {
@@ -199,8 +205,9 @@ export function OnLineSeriesLabel({
 			fontWeight={effectiveFontWeight}
 			fontFamily={effectiveFontFamily}
 			fontStyle={effectiveFontStyle}
-			textAnchor="middle"
-			dominantBaseline="middle"
+			textAnchor={textAnchor}
+			dominantBaseline={dominantBaseline}
+			letterSpacing={customEntry?.letterSpacing}
 			{...(showOutline && {
 				stroke: LABEL_OUTLINE_COLOR,
 				strokeWidth: 2,
@@ -209,6 +216,7 @@ export function OnLineSeriesLabel({
 			onClick={handleClick}
 			style={{
 				cursor,
+				...(typeof customEntry?.opacity === 'number' ? { opacity: customEntry.opacity } : {}),
 				userSelect: 'none',
 				pointerEvents: isEditor ? 'all' : 'none',
 			}}
@@ -225,8 +233,10 @@ export function OnLineSeriesLabel({
 		</text>
 	);
 
+	const translation = `translate(${anchorX + position.dx}, ${anchorY + position.dy})`;
+	const rotation = customEntry?.rotation ? ` rotate(${customEntry.rotation})` : '';
 	const groupContent = (
-		<Group innerRef={dragRef} transform={`translate(${anchorX + position.dx}, ${anchorY + position.dy})`}>
+		<Group innerRef={dragRef} transform={`${translation}${rotation}`}>
 			{textElement}
 		</Group>
 	);

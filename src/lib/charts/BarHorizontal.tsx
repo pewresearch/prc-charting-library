@@ -33,12 +33,14 @@ import {
 	useSize,
 	getLinearValueDataExtent,
 	hasExplicitAxisDomain,
+	INERT_SERIES_MASK,
 	resolveLinearScaleDomain,
 	resolveScaleNice,
+	useDismissTooltipOnSeriesMask,
 } from '@prc/charting-utilities';
 
 // TYPES
-import type { BaseConfig, FlatData, GroupedData, Size, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, GroupedData, SeriesMaskView, Size, TableData } from '@prc/charting-utilities';
 
 // VISX
 import { AxisBottom, AxisLeft } from '@visx/axis';
@@ -68,12 +70,13 @@ import {
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
 
 const BarHorizontal = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 	const {
@@ -94,6 +97,10 @@ const BarHorizontal = () => {
 		drawings,
 		seriesStyles,
 	} = config;
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const visibleCategories = seriesMaskView.filterKeys(dataRender.categories) as string[];
+	const plotDataRender =
+		visibleCategories === dataRender.categories ? dataRender : { ...dataRender, categories: visibleCategories };
 	// SIZE AND LAYOUT
 	const { width, height, parentClass, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
@@ -134,6 +141,8 @@ const BarHorizontal = () => {
 		[groupedData, dataRender, independentScale, innerHeight]
 	);
 
+	// Domain stays the full series list so a hidden series keeps its slot
+	// and the remaining bars do not grow.
 	const keyScale = useMemo(
 		() =>
 			scaleBand<string>({
@@ -149,6 +158,7 @@ const BarHorizontal = () => {
 				// otherwise silently keep d3's default [0, 1].
 				domain: resolveLinearScaleDomain(
 					dependentAxis.domain,
+					// Full series list: a temporary hide must not move the axis.
 					getLinearValueDataExtent(flattenedData, dataRender.categories)
 				),
 				range: [0, innerWidth],
@@ -254,6 +264,7 @@ const BarHorizontal = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 	let tooltipTimeout: number;
 
 	return (
@@ -315,7 +326,7 @@ const BarHorizontal = () => {
 									<Group top={startY}>
 										<BarGroupHorizontal
 											data={groupData}
-											keys={dataRender.categories}
+											keys={visibleCategories}
 											height={groupHeight}
 											width={innerWidth}
 											y0={getIndependentValue}
@@ -562,7 +573,7 @@ const BarHorizontal = () => {
 											<NetValueLabels
 												items={buildNetValueItemsHorizontalGrouped({
 													data: groupData,
-													dataRender,
+													dataRender: plotDataRender,
 													dependentScale,
 													groupScale,
 													getIndependentValue,

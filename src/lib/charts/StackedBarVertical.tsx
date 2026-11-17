@@ -29,8 +29,10 @@ import {
 	useSize,
 	getLinearValueDataExtent,
 	hasExplicitAxisDomain,
+	INERT_SERIES_MASK,
 	resolveLinearScaleDomain,
 	resolveScaleNice,
+	useDismissTooltipOnSeriesMask,
 } from '@prc/charting-utilities';
 import {
 	AnnotationsLayer,
@@ -45,7 +47,7 @@ import {
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
 import { buildNetValueItemsVerticalStacked, NetValueLabels } from '../labels/NetValueLabels';
 
-import type { BaseConfig, FlatData, GroupedData, Size, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, GroupedData, SeriesMaskView, Size, TableData } from '@prc/charting-utilities';
 
 import { AxisBottom, AxisLeft } from '@visx/axis';
 import { GridColumns, GridRows } from '@visx/grid';
@@ -58,12 +60,13 @@ import { useTooltip } from '@visx/tooltip';
 import { ascending, descending } from 'd3-array';
 
 const StackedBarVertical = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -83,6 +86,10 @@ const StackedBarVertical = () => {
 		netValues,
 		seriesStyles,
 	} = config;
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const visibleCategories = seriesMaskView.filterKeys(dataRender.categories) as string[];
+	const plotDataRender =
+		visibleCategories === dataRender.categories ? dataRender : { ...dataRender, categories: visibleCategories };
 
 	// SIZE AND LAYOUT
 	const { height, width, parentClass, padding } = layout;
@@ -144,6 +151,7 @@ const StackedBarVertical = () => {
 				// visx would otherwise silently keep d3's default [0, 1].
 				domain: resolveLinearScaleDomain(
 					dependentAxis.domain,
+					// Full series list: a temporary hide must not move the axis.
 					getLinearValueDataExtent(flattenedData, dataRender.categories, { stacked: true })
 				),
 				range: [0, innerWidth],
@@ -213,6 +221,7 @@ const StackedBarVertical = () => {
 		hideTooltip,
 		showTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 
 	let tooltipTimeout: number;
 
@@ -275,7 +284,7 @@ const StackedBarVertical = () => {
 
 									<BarStack
 										data={groupData}
-										keys={dataRender.categories}
+										keys={visibleCategories}
 										x={getIndependentValue}
 										xScale={groupScale}
 										yScale={dependentScale}
@@ -485,7 +494,7 @@ const StackedBarVertical = () => {
 											<NetValueLabels
 												items={buildNetValueItemsVerticalStacked({
 													data: groupData,
-													dataRender,
+													dataRender: plotDataRender,
 													dependentScale,
 													groupScale,
 													getIndependentValue,

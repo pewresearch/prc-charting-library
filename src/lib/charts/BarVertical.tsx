@@ -29,8 +29,10 @@ import {
 	legendCategoryShapeStyle,
 	getLinearValueDataExtent,
 	hasExplicitAxisDomain,
+	INERT_SERIES_MASK,
 	resolveLinearScaleDomain,
 	resolveScaleNice,
+	useDismissTooltipOnSeriesMask,
 } from '@prc/charting-utilities';
 import {
 	StyledTooltip,
@@ -45,7 +47,7 @@ import {
 } from '../overlays';
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
 import { NetValueLabels, buildNetValueItemsVerticalGrouped } from '../labels/NetValueLabels';
-import type { FlatData, Size, BaseConfig, TableData, GroupedData } from '@prc/charting-utilities';
+import type { FlatData, Size, BaseConfig, TableData, GroupedData, SeriesMaskView } from '@prc/charting-utilities';
 
 import { BarGroup } from '@visx/shape';
 import { Group } from '@visx/group';
@@ -57,12 +59,13 @@ import { ascending, descending } from 'd3-array';
 import { LegendOrdinal } from '@visx/legend';
 
 const BarVertical = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -82,6 +85,10 @@ const BarVertical = () => {
 		netValues,
 		seriesStyles,
 	} = config;
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const visibleCategories = seriesMaskView.filterKeys(dataRender.categories) as string[];
+	const plotDataRender =
+		visibleCategories === dataRender.categories ? dataRender : { ...dataRender, categories: visibleCategories };
 
 	// SIZE AND LAYOUT
 	const { height, width, parentClass, padding } = layout;
@@ -134,6 +141,8 @@ const BarVertical = () => {
 	const calculatedChartWidth = useMemo(() => {
 		return dataRender.groupBreaksActive ? actualContentWidth + padding.left + padding.right : size.width || width;
 	}, [dataRender.groupBreaksActive, actualContentWidth, padding, size.width, width]);
+	// Domain stays the full series list so a hidden series keeps its slot
+	// and the remaining bars do not grow.
 	const keyScale = useMemo(
 		() =>
 			scaleBand<string>({
@@ -149,6 +158,7 @@ const BarVertical = () => {
 				// otherwise silently keep d3's default [0, 1].
 				domain: resolveLinearScaleDomain(
 					dependentAxis.domain,
+					// Full series list: a temporary hide must not move the axis.
 					getLinearValueDataExtent(flattenedData, dataRender.categories)
 				),
 				range: [innerHeight, 0],
@@ -251,6 +261,7 @@ const BarVertical = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 
 	let tooltipTimeout: number;
 
@@ -313,7 +324,7 @@ const BarVertical = () => {
 
 									<BarGroup
 										data={groupData}
-										keys={dataRender.categories}
+										keys={visibleCategories}
 										height={innerHeight}
 										width={groupWidth}
 										x0={getIndependentValue}
@@ -547,7 +558,7 @@ const BarVertical = () => {
 											<NetValueLabels
 												items={buildNetValueItemsVerticalGrouped({
 													data: groupData,
-													dataRender,
+													dataRender: plotDataRender,
 													dependentScale,
 													groupScale,
 													getIndependentValue,

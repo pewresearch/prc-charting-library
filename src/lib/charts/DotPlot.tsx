@@ -25,8 +25,10 @@ import {
 	useSize,
 	getLinearValueDataExtent,
 	hasExplicitAxisDomain,
+	INERT_SERIES_MASK,
 	resolveLinearScaleDomain,
 	resolveScaleNice,
+	useDismissTooltipOnSeriesMask,
 } from '@prc/charting-utilities';
 import { DiffColumn } from './DiffColumn';
 import {
@@ -51,7 +53,7 @@ import {
 } from '../labels';
 
 // TYPES
-import type { BaseConfig, FlatData, GroupedData, Size, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, GroupedData, SeriesMaskView, Size, TableData } from '@prc/charting-utilities';
 
 // REACT
 import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef } from 'react';
@@ -80,12 +82,13 @@ const StyledAnimatedCircle = styled(AnimatedCircle)`
 `;
 
 const DotPlot = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -134,7 +137,8 @@ const DotPlot = () => {
 	);
 
 	// get all unique categories
-	const categories = dataRender.categories;
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const categories = seriesMaskView.filterKeys(dataRender.categories) as string[];
 
 	// DATA ACCESSORS
 
@@ -168,15 +172,16 @@ const DotPlot = () => {
 				// otherwise silently keep d3's default [0, 1].
 				domain: resolveLinearScaleDomain(
 					dependentAxis.domain,
-					getLinearValueDataExtent(flattenedData, categories as string[])
+					// Full series list: a temporary hide must not move the axis.
+					getLinearValueDataExtent(flattenedData, dataRender.categories)
 				),
 				range: [0, innerWidth],
 				nice: resolveScaleNice(dependentAxis.nice, hasExplicitAxisDomain(dependentAxis.domain)),
 			}),
-		[innerWidth, dependentAxis.domain, dependentAxis.nice, flattenedData, categories]
+		[innerWidth, dependentAxis.domain, dependentAxis.nice, flattenedData, dataRender.categories]
 	);
 	const colorScale = scaleOrdinal<string, string>({
-		domain: categories as string[],
+		domain: dataRender.categories,
 		range: colors,
 	});
 
@@ -284,6 +289,7 @@ const DotPlot = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<DotPlotVoronoiDatum>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 	const tooltipTimeoutRef = useRef<number | undefined>(undefined);
 
 	const voronoiData = useMemo(() => {
@@ -532,7 +538,7 @@ const DotPlot = () => {
 												);
 												const seriesColor = resolveCategoryColor({
 													category,
-													fallback: colors[i],
+													fallback: colors[dataRender.categories.indexOf(category)],
 													dataRender,
 												});
 												const seriesOpacity = resolveCategoryOpacity({
@@ -634,7 +640,11 @@ const DotPlot = () => {
 																						wpEditorFunctions.errorBars.onClick(
 																							d,
 																							category,
-																							colors[i],
+																							colors[
+																								dataRender.categories.indexOf(
+																									category
+																								)
+																							],
 																							event.currentTarget,
 																							groupValue
 																						);
@@ -975,7 +985,7 @@ const DotPlot = () => {
 												);
 												const seriesColor = resolveCategoryColor({
 													category,
-													fallback: colors[i],
+													fallback: colors[dataRender.categories.indexOf(category)],
 													dataRender,
 												});
 												return filteredData?.map((d: FlatData, j: number) => {

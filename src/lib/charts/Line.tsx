@@ -5,7 +5,7 @@
 /* eslint-disable max-lines-per-function */
 import { CSSProperties, RefObject, useCallback, useContext, useMemo, useRef, useState } from 'react';
 
-import type { BaseConfig, FlatData, Size, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, SeriesMaskView, Size, TableData } from '@prc/charting-utilities';
 import {
 	DataContext,
 	generateElementKey as generateElementKeyUtil,
@@ -19,6 +19,7 @@ import {
 	getTooltipFormat,
 	getTooltipHeaderFormat,
 	hasCategoryValue,
+	INERT_SERIES_MASK,
 	shouldShowLinePoint,
 	isLabelVisible,
 	linearBarBaseline,
@@ -33,6 +34,7 @@ import {
 	resolveSegmentPaint,
 	legendCategoryShapeStyle,
 	scaleAxisNumTicks,
+	useDismissTooltipOnSeriesMask,
 	useSize,
 } from '@prc/charting-utilities';
 import { useLineFamilyScales } from '../scales';
@@ -106,12 +108,13 @@ function generateShapeKey(x: any, category: string, groupValue: string | null = 
 }
 
 const Line = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -134,6 +137,17 @@ const Line = () => {
 		annotations,
 		drawings,
 	} = config;
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const visibleCategories = seriesMaskView.filterKeys(dataRender.categories) as string[];
+	const plotDataRender =
+		visibleCategories === dataRender.categories ? dataRender : { ...dataRender, categories: visibleCategories };
+	const directLegend = useMemo(() => {
+		if (!legend.categories?.length) {
+			return legend;
+		}
+		const categories = seriesMaskView.filterKeys(legend.categories) as string[];
+		return categories === legend.categories ? legend : { ...legend, categories };
+	}, [legend, seriesMaskView]);
 
 	// SIZE AND LAYOUT
 	const { width, height, parentClass, padding } = layout;
@@ -181,7 +195,7 @@ const Line = () => {
 			flattenedData
 				.map((d: FlatData) =>
 					// eslint-disable-next-line array-callback-return
-					dataRender.categories.map((c: string, i: number) => {
+					visibleCategories.map((c: string) => {
 						if (d[c]) {
 							const { body: _lineTip, header: _lineHdr } = getCustomTooltip(d, c);
 							return {
@@ -194,7 +208,7 @@ const Line = () => {
 								tooltipHeader: _lineHdr,
 								color: resolveCategoryColor({
 									category: c,
-									fallback: colors[i],
+									fallback: colors[dataRender.categories.indexOf(c)],
 									dataRender,
 								}),
 							};
@@ -203,7 +217,7 @@ const Line = () => {
 				)
 				.flat()
 				.filter(Boolean),
-		[dataRender, flattenedData, colors]
+		[dataRender, flattenedData, colors, visibleCategories]
 	);
 
 	// DATA ACCESSORS
@@ -224,12 +238,14 @@ const Line = () => {
 		(category: string, index: number) =>
 			resolveCategoryColor({
 				category,
-				fallback: colors[index],
+				fallback: colors[dataRender.categories.indexOf(category)] ?? colors[index],
 				dataRender,
 			}),
 		[colors, dataRender]
 	);
 
+	// Keep the chart's original dependent scale. A temporary hide must not
+	// switch the extent method or drop hidden series from the domain.
 	const { independentScale, dependentScale } = useLineFamilyScales({
 		independentAxis,
 		dependentAxis,
@@ -316,9 +332,9 @@ const Line = () => {
 
 	const { isDirectLegend, directSeriesDeclutterInputs, directSeriesOffsets, omittedCategories, labelScales } =
 		useDirectSeriesLegend({
-			legend,
+			legend: directLegend,
 			labels,
-			dataRender,
+			dataRender: plotDataRender,
 			flattenedData,
 			innerWidth,
 			innerHeight,
@@ -340,7 +356,7 @@ const Line = () => {
 	} = useUnifiedTooltip({
 		tooltip,
 		flattenedData,
-		categories: dataRender.categories,
+		categories: visibleCategories,
 		independentScale,
 		dependentScale,
 		getIndependentValue,
@@ -356,7 +372,7 @@ const Line = () => {
 			return [];
 		}
 		return buildLineChartLabelInputs({
-			categories: dataRender.categories,
+			categories: visibleCategories,
 			flattenedData,
 			labels,
 			labelProps,
@@ -366,7 +382,7 @@ const Line = () => {
 		}).filter((input) => !input.category || !omittedCategories.has(input.category));
 	}, [
 		labels,
-		dataRender.categories,
+		visibleCategories,
 		flattenedData,
 		labelProps,
 		independentScale,
@@ -469,6 +485,7 @@ const Line = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 
 	// Track cursor position for better tooltip positioning
 	const [cursorPosition, setCursorPosition] = useState<{
@@ -642,7 +659,7 @@ const Line = () => {
 								<LeaderLineUnderlay />
 							) : null}
 							{/* iterate over each category and render a line for each */}
-							{dataRender.categories.map((category: string, i: number) => {
+							{visibleCategories.map((category: string, i: number) => {
 								// it's not guaranteed that all categories have the same number of data points
 								// so we need to filter out any data points that don't have a value for the current category
 								const filteredData = flattenedData.filter((d: FlatData) =>
@@ -650,7 +667,7 @@ const Line = () => {
 								);
 								const seriesColor = resolveCategoryColor({
 									category,
-									fallback: colors[i],
+									fallback: colors[dataRender.categories.indexOf(category)],
 									dataRender,
 								});
 								const seriesOpacity = resolveCategoryOpacity({
@@ -1085,13 +1102,13 @@ const Line = () => {
 						{/* Render draggable labels outside main Group to avoid event capture */}
 						{labels.active && wpEditorFunctions?.labels && (
 							<Group top={padding.top} left={padding.left}>
-								{dataRender.categories.map((category: string, i: number) => {
+								{visibleCategories.map((category: string, i: number) => {
 									const filteredData = flattenedData.filter((d: FlatData) =>
 										hasCategoryValue(d, category)
 									);
 									const seriesColor = resolveCategoryColor({
 										category,
-										fallback: colors[i],
+										fallback: colors[dataRender.categories.indexOf(category)],
 										dataRender,
 									});
 									return filteredData?.map((d: FlatData, j: number) => {

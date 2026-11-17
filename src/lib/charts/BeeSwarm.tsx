@@ -23,6 +23,7 @@ import {
 	getFlattenedData,
 	getGroupColorDomain,
 	getGroupValue,
+	INERT_SERIES_MASK,
 	getLocalPoint,
 	getMaxAbsColumnValue,
 	getMinPositiveColumnValue,
@@ -36,9 +37,10 @@ import {
 	resolvePointPaint,
 	legendCategoryShapeStyle,
 	scaleAxisNumTicks,
+	useDismissTooltipOnSeriesMask,
 	useSize,
 } from '@prc/charting-utilities';
-import type { BaseConfig, FlatData, Size, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, SeriesMaskView, Size, TableData } from '@prc/charting-utilities';
 
 import { AnimatedCircle, TransitionProvider } from '../animation';
 import { DraggableLabel } from '../labels';
@@ -72,7 +74,7 @@ function isNumericValue(value: unknown): value is number {
 }
 
 const BeeSwarm = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: FlatData[][];
 			config: BaseConfig;
@@ -90,6 +92,7 @@ const BeeSwarm = () => {
 				labels?: boolean;
 				tickLabels?: { onClick: (...args: unknown[]) => void };
 			};
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -127,9 +130,20 @@ const BeeSwarm = () => {
 	// fallback only applies when this component is driven directly.
 	const valueCategory = dataRender.categories?.[0] ?? dataRender.x;
 
-	const filteredData = useMemo(
+	const numericData = useMemo(
 		() => flattenedData.filter((row) => isNumericValue(row[valueCategory])),
 		[flattenedData, valueCategory]
+	);
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const filteredData = useMemo(
+		() =>
+			numericData.filter((row) => {
+				const hideKey = dataRender.groupBreaksCategory
+					? String(row[dataRender.groupBreaksCategory] ?? '')
+					: String(valueCategory);
+				return !seriesMaskView.isHidden(hideKey);
+			}),
+		[numericData, dataRender.groupBreaksCategory, valueCategory, seriesMaskView]
 	);
 
 	const getValue = useCallback((row: FlatData) => Number(row[valueCategory]), [valueCategory]);
@@ -138,14 +152,15 @@ const BeeSwarm = () => {
 
 	const sizeScale = useMemo(() => {
 		if (!sizeCategory) return null;
+		// Full numeric rows: a temporary hide must not remap remaining radii.
 		return createPointRadiusScale({
-			maxValue: getMaxAbsColumnValue(filteredData, sizeCategory),
-			minValue: getMinPositiveColumnValue(filteredData, sizeCategory),
+			maxValue: getMaxAbsColumnValue(numericData, sizeCategory),
+			minValue: getMinPositiveColumnValue(numericData, sizeCategory),
 			minRadius: nodes.minPointSize ?? 4,
 			maxRadius: nodes.maxPointSize ?? 24,
 			scaleType: nodes.sizeScale ?? 'sqrt',
 		});
-	}, [filteredData, sizeCategory, nodes.minPointSize, nodes.maxPointSize, nodes.sizeScale]);
+	}, [numericData, sizeCategory, nodes.minPointSize, nodes.maxPointSize, nodes.sizeScale]);
 
 	const getCategoryKey = useCallback(
 		(row: FlatData) => {
@@ -171,11 +186,12 @@ const BeeSwarm = () => {
 	const valueScale = useMemo(
 		() =>
 			scaleLinear({
-				domain: extent(filteredData, getValue) as [number, number],
+				// Full numeric rows: a temporary hide must not move the value axis.
+				domain: extent(numericData, getValue) as [number, number],
 				range: [0, innerWidth],
 				nice: true,
 			}),
-		[filteredData, getValue, innerWidth]
+		[numericData, getValue, innerWidth]
 	);
 
 	const dependentScale = useMemo(
@@ -189,11 +205,11 @@ const BeeSwarm = () => {
 
 	const groupColorDomain = useMemo(
 		() =>
-			getGroupColorDomain(filteredData, dataRender.groupBreaksCategory, {
+			getGroupColorDomain(numericData, dataRender.groupBreaksCategory, {
 				groupOrder: dataRender.groupBreaksCategoryValues,
 				legendCategories: legend.categories,
 			}),
-		[dataRender.groupBreaksCategory, dataRender.groupBreaksCategoryValues, filteredData, legend.categories]
+		[dataRender.groupBreaksCategory, dataRender.groupBreaksCategoryValues, numericData, legend.categories]
 	);
 
 	const colorScale = useMemo(
@@ -309,6 +325,7 @@ const BeeSwarm = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<LayoutPoint>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 
 	const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
 

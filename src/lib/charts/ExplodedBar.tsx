@@ -19,6 +19,7 @@ import {
 	resolveLabelCutoff,
 	getLinearValueDataExtent,
 	hasExplicitAxisDomain,
+	INERT_SERIES_MASK,
 	resolveLinearScaleDomain,
 	resolveScaleNice,
 	getChartDimensions,
@@ -32,6 +33,7 @@ import {
 	getGroupedData,
 	createGroupBandScale,
 	getGroupPositioningHorizontal,
+	useDismissTooltipOnSeriesMask,
 } from '@prc/charting-utilities';
 import { DiffColumn } from './DiffColumn';
 import {
@@ -45,7 +47,7 @@ import {
 	StyledLegend,
 } from '../overlays';
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
-import type { FlatData, Size, BaseConfig, TableData, GroupedData } from '@prc/charting-utilities';
+import type { FlatData, SeriesMaskView, Size, BaseConfig, TableData, GroupedData } from '@prc/charting-utilities';
 
 import { BarStackHorizontal } from '@visx/shape';
 import { Group } from '@visx/group';
@@ -57,12 +59,13 @@ import { ascending, descending } from 'd3-array';
 import { LegendOrdinal } from '@visx/legend';
 
 const ExplodedBar = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 	const {
@@ -99,10 +102,12 @@ const ExplodedBar = () => {
 	// EXPLODED BAR COLUMN CALCULATIONS
 	// Calculate the available width for columns after accounting for gaps between them.
 	// Previously, gaps were additive which caused overflow on small screens.
-	const numCategories = dataRender.categories.length;
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const visibleCategories = seriesMaskView.filterKeys(dataRender.categories) as string[];
+	const numCategories = visibleCategories.length;
 	const totalGapSpace = numCategories > 1 ? explodedBar.columnGap * (numCategories - 1) : 0;
 	const availableContentWidth = innerWidth - totalGapSpace;
-	const columnWidth = availableContentWidth / numCategories;
+	const columnWidth = numCategories > 0 ? availableContentWidth / numCategories : 0;
 	// Reserve 30px per column for axis labels/padding
 	const columnContentWidth = Math.max(0, columnWidth - 30);
 
@@ -160,6 +165,7 @@ const ExplodedBar = () => {
 				// otherwise silently keep d3's default [0, 1].
 				domain: resolveLinearScaleDomain(
 					dependentAxis.domain,
+					// Full series list: a temporary hide must not move the axis.
 					getLinearValueDataExtent(flattenedData, dataRender.categories)
 				),
 				range: [0, columnContentWidth],
@@ -236,6 +242,7 @@ const ExplodedBar = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 
 	let tooltipTimeout: number;
 
@@ -250,7 +257,7 @@ const ExplodedBar = () => {
 					style={{ pointerEvents: tooltip.active ? 'auto' : 'none' }}
 				>
 					<SeriesPatternDefs seriesStyles={seriesStyles} resolveFill={(category) => colorScale(category)} />
-					{dataRender.categories.map((category: string, categoryIndex: number) => {
+					{visibleCategories.map((category: string, categoryIndex: number) => {
 						return (
 							<Group
 								role="presentation"
@@ -670,7 +677,7 @@ const ExplodedBar = () => {
 
 								return (
 									<Group key={`draggable-labels-group-${groupIndex}`}>
-										{dataRender.categories.map((barCategory, catIndex) => {
+										{visibleCategories.map((barCategory, catIndex) => {
 											return (
 												<Group
 													key={`draggable-category-${groupIndex}-${catIndex}`}
@@ -737,8 +744,7 @@ const ExplodedBar = () => {
 																		groupValue
 																	);
 																	const customShapeStyles =
-																		shapes?.customStyles?.[shapeKey] ||
-																		{};
+																		shapes?.customStyles?.[shapeKey] || {};
 																	const paint = resolveBarPaint(
 																		{
 																			fill: defaultColor,
@@ -752,11 +758,10 @@ const ExplodedBar = () => {
 																		paint,
 																		barCategory
 																	);
-																	const labelContrastFill =
-																		barFillForLabelContrast(
-																			shapeFill,
-																			defaultColor
-																		);
+																	const labelContrastFill = barFillForLabelContrast(
+																		shapeFill,
+																		defaultColor
+																	);
 
 																	return (
 																		<AnimatedBarLabel

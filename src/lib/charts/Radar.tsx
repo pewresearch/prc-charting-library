@@ -20,11 +20,13 @@ import {
 	DEFAULT_FONT_FAMILY,
 	getLinearValueDataExtent,
 	hasExplicitAxisDomain,
+	INERT_SERIES_MASK,
 	resolveLinearScaleDomain,
 	resolveScaleNice,
+	useDismissTooltipOnSeriesMask,
 } from '@prc/charting-utilities';
 
-import type { FlatData, Size, BaseConfig, TableData } from '@prc/charting-utilities';
+import type { FlatData, SeriesMaskView, Size, BaseConfig, TableData } from '@prc/charting-utilities';
 
 import { LineRadial, Line } from '@visx/shape';
 import { Group } from '@visx/group';
@@ -37,12 +39,13 @@ import { StyledTooltip, StyledLegend, AnnotationsLayer, DrawingsLayer, Clickable
 import { DraggableLabel } from '../labels';
 
 const Radar = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -63,6 +66,11 @@ const Radar = () => {
 
 	// DATA
 	const flattenedData = useMemo(() => getFlattenedData(data), [data]);
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const plotRows = useMemo(
+		() => flattenedData.filter((row) => !seriesMaskView.isHidden(String(row[dataRender.x]))),
+		[flattenedData, seriesMaskView, dataRender.x]
+	);
 	const categories = dataRender.categories;
 
 	// SCALES
@@ -73,6 +81,7 @@ const Radar = () => {
 				// otherwise silently keep d3's default [0, 1].
 				domain: resolveLinearScaleDomain(
 					dependentAxis.domain,
+					// Full data: a temporary hide must not move the radius scale.
 					getLinearValueDataExtent(flattenedData, categories)
 				),
 				range: [0, radius],
@@ -92,7 +101,7 @@ const Radar = () => {
 
 	// Convert each row to polygon points (angle, radius) and close the loop
 	const polygonData = useMemo(() => {
-		return flattenedData.map((row) => {
+		return plotRows.map((row) => {
 			const points = categories.map((cat, i) => {
 				const value = Number(row[cat]) || 0;
 				const angle = -Math.PI / 2 + (i * (2 * Math.PI)) / categories.length;
@@ -100,7 +109,7 @@ const Radar = () => {
 			});
 			return [...points, points[0]];
 		});
-	}, [flattenedData, categories, radiusScale]);
+	}, [plotRows, categories, radiusScale]);
 
 	const { ariaProps, legendProps, tooltipVisible, labelProps, annotationsVisible } = useMemo(
 		() =>
@@ -122,6 +131,7 @@ const Radar = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 	let tooltipTimeout: number;
 
 	// Grid levels (concentric circles)
@@ -215,7 +225,7 @@ const Radar = () => {
 
 					{/* Data polygons */}
 					{polygonData.map((points, rowIndex) => {
-						const row = flattenedData[rowIndex];
+						const row = plotRows[rowIndex];
 						const seriesName = String(row[dataRender.x]);
 						const defaultColor = colorScale(seriesName);
 						const groupValue = getGroupValue(row, dataRender);
@@ -319,7 +329,7 @@ const Radar = () => {
 
 				{labels.active && wpEditorFunctions?.labels && (
 					<Group top={padding.top + centerY} left={padding.left + centerX}>
-						{flattenedData.map((row, rowIndex) => {
+						{plotRows.map((row, rowIndex) => {
 							const points = polygonData[rowIndex];
 							const centroidX =
 								points.reduce((s, p) => s + Math.cos(p.angle) * p.radius, 0) / points.length;

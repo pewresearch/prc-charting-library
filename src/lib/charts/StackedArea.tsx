@@ -4,7 +4,9 @@ import { useCallback, useContext, useMemo, useRef, RefObject, CSSProperties } fr
 // INTERNAL
 import {
 	DataContext,
+	INERT_SERIES_MASK,
 	scaleAxisNumTicks,
+	useDismissTooltipOnSeriesMask,
 	useSize,
 	getCustomTooltip,
 	isLabelVisible,
@@ -27,7 +29,7 @@ import {
 	newDateByFormat,
 	getLabelFill,
 } from '@prc/charting-utilities';
-import type { FlatData, Size, BaseConfig, TableData } from '@prc/charting-utilities';
+import type { FlatData, SeriesMaskView, Size, BaseConfig, TableData } from '@prc/charting-utilities';
 import { useLineFamilyScales } from '../scales';
 import {
 	StyledTooltip,
@@ -78,12 +80,13 @@ const StyledAnimatedCircle = styled(AnimatedCircle)`
 type CurveType = typeof Curve;
 
 const StackedArea = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -105,6 +108,17 @@ const StackedArea = () => {
 		drawings,
 		seriesStyles,
 	} = config;
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const visibleCategories = seriesMaskView.filterKeys(dataRender.categories) as string[];
+	const plotDataRender =
+		visibleCategories === dataRender.categories ? dataRender : { ...dataRender, categories: visibleCategories };
+	const directLegend = useMemo(() => {
+		if (!legend.categories?.length) {
+			return legend;
+		}
+		const categories = seriesMaskView.filterKeys(legend.categories) as string[];
+		return categories === legend.categories ? legend : { ...legend, categories };
+	}, [legend, seriesMaskView]);
 
 	// SIZE AND LAYOUT
 	const { height, width, parentClass, padding } = layout;
@@ -150,8 +164,8 @@ const StackedArea = () => {
 		() =>
 			flattenedData
 				.map((d: FlatData) =>
-					dataRender.categories.map((c: string, i) => {
-						const sumOfYs = dataRender.categories.slice(0, i + 1).reduce((acc, curr) => {
+					visibleCategories.map((c: string, i) => {
+						const sumOfYs = visibleCategories.slice(0, i + 1).reduce((acc, curr) => {
 							return Number(acc) + Number(d[curr]);
 						}, 0);
 
@@ -168,7 +182,7 @@ const StackedArea = () => {
 								tooltipHeader: _areaHdr,
 								color: resolveCategoryColor({
 									category: c,
-									fallback: colors[i],
+									fallback: colors[dataRender.categories.indexOf(c)],
 									dataRender,
 								}),
 							};
@@ -178,7 +192,7 @@ const StackedArea = () => {
 				)
 				.flat()
 				.filter(Boolean),
-		[dataRender, flattenedData, colors]
+		[dataRender, flattenedData, colors, visibleCategories]
 	);
 
 	// DATA ACCESSORS
@@ -197,6 +211,7 @@ const StackedArea = () => {
 
 	const getStackedDependentDomainExtent = useCallback(
 		(rows: FlatData[]) => {
+			// Full series list: a temporary hide must not move the axis.
 			const maxStack = max(rows, (row) =>
 				dataRender.categories.reduce((acc, category) => acc + Number(row[category] || 0), 0)
 			) as number;
@@ -284,15 +299,15 @@ const StackedArea = () => {
 
 	const getSeriesDependentValue = useCallback(
 		(d: FlatData, _category: string, categoryIndex: number) =>
-			getStackedSeriesDependentValue(d, dataRender.categories, categoryIndex),
-		[dataRender.categories]
+			getStackedSeriesDependentValue(d, visibleCategories, categoryIndex),
+		[visibleCategories]
 	);
 
 	const { isDirectLegend, directSeriesDeclutterInputs, directSeriesOffsets, omittedCategories, labelScales } =
 		useDirectSeriesLegend({
-			legend,
+			legend: directLegend,
 			labels,
-			dataRender,
+			dataRender: plotDataRender,
 			flattenedData,
 			innerWidth,
 			innerHeight,
@@ -313,6 +328,7 @@ const StackedArea = () => {
 		showTooltip,
 		hideTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 
 	let tooltipTimeout: number = 0;
 	const handleMouseMove = useCallback(
@@ -503,7 +519,7 @@ const StackedArea = () => {
 							</g>
 						)}
 						<AreaStack
-							keys={dataRender.categories}
+							keys={visibleCategories}
 							data={flattenedData}
 							x={(d: any) => independentScale(getIndependentValue(d.data))}
 							y0={(d) => dependentScale(d[0])}
@@ -516,11 +532,11 @@ const StackedArea = () => {
 								// shared-spring render-prop). Markers therefore sit above
 								// every area, exactly as before, while staying glued to
 								// their stack's top line (Option A).
-								const areas = stacks.map((stack, i) => {
+								const areas = stacks.map((stack) => {
 									const category = stack.key;
 									const seriesColor = resolveCategoryColor({
 										category,
-										fallback: colors[i],
+										fallback: colors[dataRender.categories.indexOf(category)],
 										dataRender,
 									});
 									const seriesOpacity = resolveCategoryOpacity({
@@ -555,11 +571,11 @@ const StackedArea = () => {
 										/>
 									);
 								});
-								const lines = stacks.map((stack, i) => {
+								const lines = stacks.map((stack) => {
 									const category = stack.key;
 									const seriesColor = resolveCategoryColor({
 										category,
-										fallback: colors[i],
+										fallback: colors[dataRender.categories.indexOf(category)],
 										dataRender,
 									});
 									const seriesOpacity = resolveCategoryOpacity({
@@ -640,7 +656,7 @@ const StackedArea = () => {
 						</AreaStack>
 						{labels.active &&
 							!wpEditorFunctions?.labels &&
-							dataRender.categories.map((category: string, categoryIndex: number) => {
+							visibleCategories.map((category: string, categoryIndex: number) => {
 								const filteredData = flattenedData.filter(
 									(d: FlatData) => d[category] || d[category] !== ''
 								);
@@ -665,7 +681,7 @@ const StackedArea = () => {
 									if (!labelContent) return null;
 
 									// Calculate stacked Y position (sum of all previous categories + current)
-									const ySum = dataRender.categories
+									const ySum = visibleCategories
 										.slice(0, categoryIndex + 1)
 										.reduce((acc: number, curr: string) => {
 											return Number(acc) + Number(d[curr]);
@@ -761,7 +777,7 @@ const StackedArea = () => {
 					{/* Render draggable labels outside main Group to avoid event capture */}
 					{labels.active && wpEditorFunctions?.labels && (
 						<Group top={padding.top} left={padding.left}>
-							{dataRender.categories.map((category: string, categoryIndex: number) => {
+							{visibleCategories.map((category: string, categoryIndex: number) => {
 								const filteredData = flattenedData.filter(
 									(d: FlatData) => d[category] || d[category] !== ''
 								);
@@ -781,11 +797,9 @@ const StackedArea = () => {
 									if (!labelContent) return null;
 
 									// Calculate stacked Y position (sum of all previous categories + current)
-									const ySum = dataRender.categories
-										.slice(0, categoryIndex + 1)
-										.reduce((acc, curr) => {
-											return Number(acc) + Number(d[curr]);
-										}, 0);
+									const ySum = visibleCategories.slice(0, categoryIndex + 1).reduce((acc, curr) => {
+										return Number(acc) + Number(d[curr]);
+									}, 0);
 
 									const placement = getFirstLastLabelPlacement({
 										pointIndex: j,

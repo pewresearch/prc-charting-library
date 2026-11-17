@@ -1,7 +1,7 @@
 /* eslint-disable max-lines-per-function */
 import { CSSProperties, RefObject, useContext, useMemo, useRef, useState } from 'react';
 
-import type { BaseConfig, FlatData, Size, TableData } from '@prc/charting-utilities';
+import type { BaseConfig, FlatData, SeriesMaskView, Size, TableData } from '@prc/charting-utilities';
 import {
 	DataContext,
 	computeWaffleCells,
@@ -14,7 +14,9 @@ import {
 	getTooltipHeaderFormat,
 	getWaffleCategoryInputs,
 	getLocalPoint,
+	INERT_SERIES_MASK,
 	resolveWaffleCellSize,
+	useDismissTooltipOnSeriesMask,
 	useSize,
 } from '@prc/charting-utilities';
 import {
@@ -45,12 +47,13 @@ function resolveWaffleGrid(waffleConfig: BaseConfig['waffle']) {
 }
 
 const Waffle = () => {
-	const { data, config, tableData, wpEditorFunctions } = useContext(
+	const { data, config, tableData, wpEditorFunctions, seriesMask } = useContext(
 		DataContext as React.Context<{
 			data: any;
 			config: BaseConfig;
 			tableData: TableData;
 			wpEditorFunctions?: any;
+			seriesMask?: SeriesMaskView;
 		}>
 	);
 
@@ -77,10 +80,11 @@ const Waffle = () => {
 	const category = dataRender.categories[0] || 'y';
 	const grid = resolveWaffleGrid(waffleConfig);
 
-	const categoryInputs = useMemo(
-		() => getWaffleCategoryInputs(flattenedData, category, legend?.categories),
-		[flattenedData, category, legend?.categories]
-	);
+	const seriesMaskView = seriesMask ?? INERT_SERIES_MASK;
+	const categoryInputs = useMemo(() => {
+		const inputs = getWaffleCategoryInputs(flattenedData, category, legend?.categories);
+		return inputs.filter((input) => !seriesMaskView.isHidden(input.key));
+	}, [flattenedData, category, legend?.categories, seriesMaskView]);
 
 	const waffleData = useMemo(
 		() =>
@@ -161,6 +165,7 @@ const Waffle = () => {
 		hideTooltip,
 		showTooltip,
 	} = useTooltip<FlatData>();
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 	let tooltipTimeout: number;
 
 	const [activeCategory, setActiveCategory] = useState<string | null>(null);

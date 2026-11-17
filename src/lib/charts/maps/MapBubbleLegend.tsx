@@ -23,6 +23,8 @@ import {
 	contrastLabelFillForLightDark,
 	DataContext,
 	decodeHtmlEntities,
+	dominantBaselineFromVerticalAnchor,
+	resolveLegendTextAnchor,
 	type BaseConfig,
 	type LegendItemCustomization,
 	type TableData,
@@ -143,7 +145,8 @@ const MapBubbleLegend = ({
 	// fontStyle, fontFamily, textOutline) so editors get the same popover
 	// experience for radius-legend items as for standard legend items.
 	// `markerStyle` / `markerFill` are intentionally ignored — the circle IS
-	// the data mark, not a swatch.
+	// the data mark, not a swatch. Text anchor, vertical anchor, rotation,
+	// and opacity match the text annotation settings on other legend items.
 	const itemFor = (value: number) => {
 		const itemKey = String(value);
 		const customEntry = customLabels[itemKey];
@@ -167,7 +170,20 @@ const MapBubbleLegend = ({
 			style: { fontVariantNumeric: 'tabular-nums' },
 		};
 
-		return { itemKey, displayText, effectiveFontSize, textProps };
+		return { itemKey, displayText, effectiveFontSize, textProps, customEntry };
+	};
+
+	const legendTextAttrs = (customEntry: LegendItemCustomization | undefined, x: number, y: number) => {
+		const anchor = resolveLegendTextAnchor(customEntry);
+		return {
+			textAnchor: anchor ?? 'middle',
+			dominantBaseline: customEntry?.verticalAnchor
+				? dominantBaselineFromVerticalAnchor(customEntry.verticalAnchor)
+				: undefined,
+			letterSpacing: customEntry?.letterSpacing,
+			opacity: customEntry?.opacity,
+			transform: customEntry?.rotation ? `rotate(${customEntry.rotation} ${x} ${y})` : undefined,
+		};
 	};
 
 	if (layout === 'stacked') {
@@ -190,7 +206,7 @@ const MapBubbleLegend = ({
 				>
 					{sorted.map(({ value, radius }) => {
 						const cy = svgHeight - radius;
-						const { itemKey, displayText, effectiveFontSize, textProps } = itemFor(value);
+						const { itemKey, displayText, effectiveFontSize, textProps, customEntry } = itemFor(value);
 						// Label sits either just above each ring's top edge
 						// (outside, default) or just inside it (inside). Uses
 						// the item's own font size so per-item overrides remain
@@ -236,7 +252,7 @@ const MapBubbleLegend = ({
 									stroke={circleStroke}
 									strokeWidth={strokeWidth}
 								/>
-								<text x={cx} y={labelY} textAnchor="middle" {...textProps}>
+								<text x={cx} y={labelY} {...textProps} {...legendTextAttrs(customEntry, cx, labelY)}>
 									{displayText}
 								</text>
 							</g>
@@ -272,7 +288,7 @@ const MapBubbleLegend = ({
 			>
 				{positioned.map(({ value, radius, cx }) => {
 					const cy = maxR;
-					const { itemKey, displayText, effectiveFontSize, textProps } = itemFor(value);
+					const { itemKey, displayText, effectiveFontSize, textProps, customEntry } = itemFor(value);
 					// Outside: baseline below the largest circle, offset by this
 					// item's own fontSize so a per-item override doesn't clip
 					// descenders. Inside: just below the top edge of this
@@ -312,7 +328,7 @@ const MapBubbleLegend = ({
 								stroke={circleStroke}
 								strokeWidth={strokeWidth}
 							/>
-							<text x={cx} y={labelY} textAnchor="middle" {...textProps}>
+							<text x={cx} y={labelY} {...textProps} {...legendTextAttrs(customEntry, cx, labelY)}>
 								{displayText}
 							</text>
 						</g>
