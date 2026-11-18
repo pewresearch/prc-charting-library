@@ -24,6 +24,7 @@ import {
 	SmallMultiples,
 	Waffle,
 	HeatMapTable,
+	Hemicycle,
 } from '../charts';
 
 // Lazy load map components - these will be code-split with their topology files
@@ -251,6 +252,13 @@ const ChartBuilder = () => {
 			return (
 				<ChartContainer className="cb__chart cb__chart__heat-map-table" maxWidth={width} minHeight={height}>
 					<HeatMapTable />
+				</ChartContainer>
+			);
+		case 'hemicycle':
+			// SVG height follows the arc radius, so skip layout.height min-height.
+			return (
+				<ChartContainer className="cb__chart cb__chart__hemicycle" maxWidth={width}>
+					<Hemicycle />
 				</ChartContainer>
 			);
 		default:

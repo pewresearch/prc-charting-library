@@ -17,4 +17,5 @@ export { default as Radar } from './Radar';
 export { DiffColumn } from './DiffColumn';
 export { SmallMultiples } from './small-multiples';
 export { Waffle, WaffleMarks } from './waffle';
+export { Hemicycle } from './hemicycle';
 export { default as HeatMapTable } from './HeatMapTable';

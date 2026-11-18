@@ -617,7 +617,9 @@ const BarVertical = () => {
 											key={`axis-${groupIndex}`}
 											{...independentAxisProps}
 											numTicks={independentAxis.tickCount}
-											tickValues={(independentAxis.tickValues as string[]) || undefined}
+											tickValues={(
+												independentAxisProps.tickValues as string[] | undefined
+											)?.filter((tick) => groupScale(tick) !== undefined)}
 											scale={groupScale}
 											top={innerHeight}
 										/>

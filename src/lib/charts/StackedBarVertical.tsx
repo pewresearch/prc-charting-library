@@ -545,11 +545,10 @@ const StackedBarVertical = () => {
 										<AxisBottom
 											key={`axis-${groupIndex}`}
 											{...independentAxisProps}
-											// because we're using a different group scale,
-											// we need to set the numTicks and tickValues
-											// TODO: does it even make sense to set tick values for these types of charts? it only seems like we would elide ticks for time scales
 											numTicks={independentAxis.tickCount}
-											tickValues={(independentAxis.tickValues as string[]) || undefined}
+											tickValues={(
+												independentAxisProps.tickValues as string[] | undefined
+											)?.filter((tick) => groupScale(tick) !== undefined)}
 											scale={groupScale}
 											top={innerHeight}
 										/>

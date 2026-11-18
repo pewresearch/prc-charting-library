@@ -763,7 +763,8 @@ const SmallMultiples = () => {
 										independentAxis,
 										isBarPanel ? bandYScale : isColumnPanel ? bandXScale : continuousXScale,
 										plotWidth,
-										plotHeight
+										plotHeight,
+										dataRender?.xFormat
 									);
 
 								const pieRadius = Math.max(0, Math.min(plotWidth, plotHeight) / 2 - PIE_PAD);
