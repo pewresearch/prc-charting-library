@@ -2,6 +2,8 @@ export { default as HorizontalRule } from './HorizontalRule';
 export { Title, Subtitle, SourceNote, Tag, AnnotationsLayer, Annotation } from './Text';
 export { StyledLegend } from './Legend';
 export { StyledTooltip } from './Tooltip';
+export { UnifiedBarTooltipBody, divergingRowTooltipGroups, isDivergingNegativeSide } from './UnifiedBarTooltip';
+export type { DivergingTooltipSide, DivergingTooltipDatum } from './UnifiedBarTooltip';
 export { PlotBands } from './PlotBands';
 export { Crosshair } from './Crosshair';
 export { UnifiedTooltipRows } from './UnifiedTooltipRows';

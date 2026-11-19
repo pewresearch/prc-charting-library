@@ -35,8 +35,8 @@ import {
 	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
-} from '../../overlays';
-import { DraggableLabel } from '../../labels';
+} from '../overlays';
+import { DraggableLabel } from '../labels';
 
 import { Group } from '@visx/group';
 import { LegendOrdinal } from '@visx/legend';

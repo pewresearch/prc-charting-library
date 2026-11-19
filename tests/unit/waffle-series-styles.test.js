@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { createElement } from 'react';
 import { render } from '@testing-library/react';
 import { baseConfig, DataProvider } from '@prc/charting-utilities';
-import Waffle from '../../src/lib/charts/waffle/Waffle';
+import Waffle from '../../src/lib/charts/Waffle';
 
 const ROWS = [
 	{ x: 'Yes', Share: 60 },

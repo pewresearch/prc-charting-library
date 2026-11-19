@@ -20,8 +20,6 @@ import {
 	getLabelFormat,
 	getLocalPoint,
 	getSharedProps,
-	getTooltipFormat,
-	getTooltipHeaderFormat,
 	positionBarLabel,
 	resolveCategoryColor,
 	resolveCategoryOpacity,
@@ -48,6 +46,8 @@ import {
 	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
+	UnifiedBarTooltipBody,
+	divergingRowTooltipGroups,
 } from '../overlays';
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
 import { buildNetValueItemsHorizontalDiverging, NetValueLabels } from '../labels/NetValueLabels';
@@ -72,25 +72,6 @@ function withDivergingBarLabelDx(
 		y: position.y,
 		dx,
 	};
-}
-
-function divergingRowTooltipGroups(
-	divergingBar: BaseConfig['divergingBar'],
-	secondaryActive: boolean,
-	tooltipSide: 'left' | 'right' | undefined,
-	unified: boolean
-): string[][] {
-	const secondary = divergingBar?.secondary;
-	const extraPositive = secondaryActive && secondary ? secondary.positiveCategories : [];
-	const extraNegative = secondaryActive && secondary ? secondary.negativeCategories : [];
-	const positive = [...(divergingBar?.positiveCategories ?? []), ...extraPositive];
-	const negative = [...(divergingBar?.negativeCategories ?? []), ...extraNegative];
-
-	if (unified) {
-		return [negative, positive].filter((group) => group.length > 0);
-	}
-
-	return [tooltipSide === 'left' ? negative : positive];
 }
 
 function pointerEventsForMark(hidden: boolean, editorShapesActive: unknown): 'none' | 'all' | undefined {
@@ -1173,103 +1154,16 @@ const DivergingBarHorizontal = () => {
 							containerRef={svgRef}
 							isMobile={isMobileTooltip}
 						>
-							<>
-								{tooltip.headerActive && (
-									<div
-										style={{
-											marginBottom: '10px',
-										}}
-									>
-										<strong>
-											{tooltipData.tooltipHeader
-												? tooltipData.tooltipHeader
-												: getTooltipHeaderFormat(
-														{
-															x: tooltipData.x,
-															category: tooltipData.category,
-														},
-														tooltip
-													)}
-										</strong>
-									</div>
-								)}
-							</>
-							{tooltipData.tooltipMode === 'row' ? (
-								<div>
-									{divergingRowTooltipGroups(
-										divergingBar,
-										secondaryActive,
-										tooltipData.tooltipSide,
-										tooltip.mode === 'unified'
-									)
-										.map((group) => group.filter((cat) => !seriesMaskView.isHidden(cat)))
-										.filter((group) => group.length > 0)
-										.map((group, groupIndex) => (
-											<div key={`tooltip-group-${groupIndex}`}>
-												{groupIndex > 0 && (
-													<div
-														style={{
-															borderTop: '1px solid light-dark(#dadbdb, #3a3a3a)',
-															margin: '8px 0',
-														}}
-													/>
-												)}
-												{group.map((cat: string) => {
-													const raw = tooltipData[cat];
-													if (raw === null || raw === undefined) return null;
-													const val = typeof raw === 'number' ? Math.abs(raw) : raw;
-													const { body: customBody } = getCustomTooltip(tooltipData, cat);
-													const secondaryColor =
-														secondaryActive &&
-														(divergingBar.secondary!.positiveCategories.includes(cat) ||
-															divergingBar.secondary!.negativeCategories.includes(cat))
-															? secondaryLabelColor(cat)
-															: undefined;
-													const html = customBody
-														? customBody
-														: getTooltipFormat(
-																{
-																	x: tooltipData.x,
-																	y: val,
-																	category: cat,
-																	color: resolveCategoryColor({
-																		category: cat,
-																		fallback: secondaryColor ?? colorScale(cat),
-																		dataRender,
-																	}),
-																	data: tooltipData,
-																},
-																tooltip,
-																dataRender
-															);
-													return <div key={cat} dangerouslySetInnerHTML={{ __html: html }} />;
-												})}
-											</div>
-										))}
-								</div>
-							) : (
-								<div
-									dangerouslySetInnerHTML={{
-										__html: tooltipData.tooltip
-											? tooltipData.tooltip
-											: getTooltipFormat(
-													{
-														x: tooltipData.x,
-														y: tooltipData.y,
-														category: tooltipData.category,
-														color: resolveCategoryColor({
-															category: tooltipData.category || '',
-															fallback: colorScale(tooltipData.category || ''),
-															dataRender,
-														}),
-														data: tooltipData,
-													},
-													tooltip,
-													dataRender
-												),
-									}}
-								/>
-							)}
+							<UnifiedBarTooltipBody
+								tooltipData={tooltipData}
+								tooltip={tooltip}
+								divergingBar={divergingBar}
+								secondaryActive={secondaryActive}
+								seriesMaskView={seriesMaskView}
+								secondaryLabelColor={secondaryLabelColor}
+								colorScale={colorScale}
+								dataRender={dataRender}
+							/>
 						</StyledTooltip>
 					)}
 			</div>

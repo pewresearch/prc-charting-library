@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-shadow */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable prefer-const */
-/* eslint-disable dot-notation */
-import { useCallback, useContext, useEffect, useMemo, useRef, RefObject, CSSProperties } from 'react';
+import { useCallback, useContext, useMemo, useRef, RefObject, CSSProperties } from 'react';
 
 import {
 	DataContext,
@@ -17,8 +15,6 @@ import {
 	getChartDimensions,
 	getLabelFormat,
 	getSharedProps,
-	getTooltipFormat,
-	getTooltipHeaderFormat,
 	getLocalPoint,
 	positionBarLabel,
 	getFlattenedData,
@@ -28,6 +24,7 @@ import {
 	resolveCategoryColor,
 	resolveCategoryOpacity,
 	resolveBarPaint,
+	resolveDivergingSecondaryPaint,
 	resolvePatternFill,
 	legendCategoryShapeStyle,
 	resolveLabelCutoff,
@@ -37,16 +34,19 @@ import {
 	resolveScaleNice,
 	INERT_SERIES_MASK,
 	seriesMaskShouldHideTooltip,
+	useDismissTooltipOnSeriesMask,
 } from '@prc/charting-utilities';
 import {
 	StyledTooltip,
 	StyledLegend,
 	AnnotationsLayer,
+	UnifiedBarTooltipBody,
 	DrawingsLayer,
 	BreakLine,
 	ClickableTicks,
 	ClickableLegend,
 	SeriesPatternDefs,
+	divergingRowTooltipGroups,
 } from '../overlays';
 import { AnimatedBar, AnimatedBarLabel, TransitionProvider } from '../animation';
 import { NetValueLabels, buildNetValueItemsVerticalDiverging } from '../labels/NetValueLabels';
@@ -61,6 +61,19 @@ import { useTooltip } from '@visx/tooltip';
 import { LegendOrdinal } from '@visx/legend';
 
 import { GridColumns, GridRows } from '@visx/grid';
+
+function withDivergingBarLabelDy(
+	position: { x: number; y: number },
+	value: number,
+	labelPositionDY: number
+): { x: number; y: number; dy: number } {
+	const dy = value < 0 ? -labelPositionDY : labelPositionDY;
+	return {
+		x: position.x,
+		y: position.y - labelPositionDY + dy,
+		dy,
+	};
+}
 
 function pointerEventsForMark(hidden: boolean, editorShapesActive: unknown): 'none' | 'all' | undefined {
 	if (hidden) {
@@ -109,16 +122,16 @@ const DivergingBarVertical = () => {
 	// LAYOUT
 	const { width, height, parentClass, padding } = layout;
 	const svgRef = useRef<SVGSVGElement>(null);
-	let size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
+	const size: Size = useSize(parentClass, svgRef as RefObject<SVGSVGElement>);
 	const { chartWidth, innerWidth, innerHeight, overflow } = getChartDimensions(size, layout);
 	const labelCutoff = resolveLabelCutoff(labels, size.width, width);
-	let isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
+	const isMobileTooltip = size.windowWidth ? size.windowWidth < layout.mobileBreakpoint : false;
 	// DATA PROCESSING
 	// this data is a little different than the others. Because the data stack's offset is divergent,
 	// we need to convert the keys that belong to the negative categories to negative values
 	const flattenedData = useMemo(() => {
 		const baseData = getFlattenedData(data);
-		let processedData = baseData.map((row: any) => {
+		const processedData = baseData.map((row: any) => {
 			return Object.keys(row).reduce((acc, key) => {
 				const value = row[key];
 				const isNegative = divergingBar.negativeCategories.includes(key);
@@ -175,9 +188,9 @@ const DivergingBarVertical = () => {
 		[groupedData, dataRender, independentScale, innerWidth]
 	);
 
-	const calculatedChartWidth = useMemo(() => {
-		return dataRender.groupBreaksActive ? actualContentWidth + padding.left + padding.right : size.width || width;
-	}, [dataRender.groupBreaksActive, actualContentWidth, padding, size.width, width]);
+	// Group breaks widen the plot. Otherwise follow getChartDimensions so scroll
+	// and narrow viewports use the same width as the horizontal diverging bar.
+	const svgWidth = dataRender.groupBreaksActive ? actualContentWidth + padding.left + padding.right : chartWidth;
 	const dependentScale = useMemo(
 		() =>
 			scaleLinear({
@@ -202,14 +215,57 @@ const DivergingBarVertical = () => {
 			divergingBar.negativeCategories,
 		]
 	);
-	const colorScale = useMemo(
-		() =>
-			scaleOrdinal<string, string>({
-				domain: [...divergingBar.negativeCategories, ...divergingBar.positiveCategories],
-				range: colors,
-			}),
-		[divergingBar, colors]
+	const resolveSecondaryPaint = useCallback(
+		(category: string) => {
+			const secondary = divergingBar.secondary;
+			const legacyStyle = secondary?.categoryStyles?.[category];
+			const legacyPaint = legacyStyle
+				? {
+						...legacyStyle,
+						fill: legacyStyle.fill === null ? 'none' : legacyStyle.fill,
+					}
+				: undefined;
+
+			return resolveDivergingSecondaryPaint(
+				{
+					fill: secondary?.fill ?? 'none',
+					stroke: secondary?.stroke ?? 'light-dark(#000000, #ffffff)',
+					strokeWidth: secondary?.strokeWidth ?? 0.5,
+					opacity: secondary?.opacity ?? 0.4,
+				},
+				legacyPaint,
+				seriesStyles?.[category]
+			);
+		},
+		[divergingBar.secondary, seriesStyles]
 	);
+
+	// An outline-only overlay has no fill to show, so tooltip text and legend
+	// swatches take its stroke instead of rendering transparent.
+	const secondaryLabelColor = useCallback(
+		(category: string) => {
+			const paint = resolveSecondaryPaint(category);
+			const fill = paint.fill ?? 'none';
+			return 'none' === fill || 'transparent' === fill ? (paint.stroke ?? fill) : fill;
+		},
+		[resolveSecondaryPaint]
+	);
+
+	const colorScale = useMemo(() => {
+		const domain = [...divergingBar.negativeCategories, ...divergingBar.positiveCategories];
+		const range = [...colors];
+
+		if (divergingBar.secondary?.active && (divergingBar.secondary?.showInLegend || tooltip.mode === 'unified')) {
+			const secondaryCats = [
+				...divergingBar.secondary.negativeCategories,
+				...divergingBar.secondary.positiveCategories,
+			];
+			domain.push(...secondaryCats);
+			range.push(...secondaryCats.map(secondaryLabelColor));
+		}
+
+		return scaleOrdinal<string, string>({ domain, range });
+	}, [divergingBar, colors, tooltip.mode, secondaryLabelColor]);
 	independentScale.rangeRound([0, innerWidth]);
 	dependentScale.range([innerHeight, 0]);
 
@@ -269,15 +325,12 @@ const DivergingBarVertical = () => {
 		showTooltip,
 	} = useTooltip<FlatData>();
 
-	useEffect(() => {
-		if (seriesMaskView.armed && seriesMaskView.revision > 0) {
-			hideTooltip();
-		}
-	}, [seriesMaskView.armed, seriesMaskView.revision, hideTooltip]);
+	useDismissTooltipOnSeriesMask(seriesMaskView, hideTooltip);
 
+	const secondaryActive = !!divergingBar.secondary?.active;
 	let tooltipTimeout: number;
 
-	return chartWidth && chartWidth < 10 ? null : (
+	return (
 		<TransitionProvider data={data} family="bar">
 			<div
 				style={{
@@ -286,7 +339,7 @@ const DivergingBarVertical = () => {
 				}}
 			>
 				<svg
-					width={calculatedChartWidth}
+					width={svgWidth}
 					height={height}
 					ref={svgRef}
 					{...ariaProps}
@@ -312,6 +365,18 @@ const DivergingBarVertical = () => {
 								[0, width],
 								barConfig.barGroupPadding
 							);
+							const secondaryGroupData = secondaryActive
+								? data.map((row: any) =>
+										Object.keys(row).reduce((acc, key) => {
+											const value = row[key];
+											const isSecNeg = divergingBar.secondary!.negativeCategories.includes(key);
+											return {
+												...acc,
+												[key]: isSecNeg && !isNaN(value) ? -Math.abs(value) : value,
+											};
+										}, {} as any)
+									)
+								: [];
 
 							return (
 								<Group key={`group-${groupIndex}-${group}`}>
@@ -328,6 +393,49 @@ const DivergingBarVertical = () => {
 										/>
 									</Group>
 
+									{secondaryActive &&
+										data.map((row: FlatData, rowIdx: number) => {
+											const rowX = groupScale(getIndependentValue(row));
+											if (rowX === undefined) return null;
+											return (
+												<rect
+													key={`row-hit-${groupIndex}-${rowIdx}`}
+													x={rowX}
+													y={0}
+													width={groupScale.bandwidth()}
+													height={innerHeight}
+													fill="transparent"
+													style={{ pointerEvents: 'all' }}
+													onMouseLeave={() => {
+														tooltipTimeout = window.setTimeout(() => {
+															hideTooltip();
+														}, 300);
+													}}
+													onMouseMove={(event) => {
+														if (tooltipTimeout) clearTimeout(tooltipTimeout);
+														if (!svgRef.current) return;
+														const coords = getLocalPoint(svgRef.current, event) || {
+															x: 0,
+															y: 0,
+														};
+														const tooltipSide: 'top' | 'bottom' =
+															coords.y - padding.top > (dependentScale(0) ?? 0)
+																? 'bottom'
+																: 'top';
+														showTooltip({
+															tooltipData: {
+																...row,
+																tooltipMode: 'row',
+																tooltipSide,
+															},
+															tooltipTop: coords.y,
+															tooltipLeft: coords.x,
+														});
+													}}
+												/>
+											);
+										})}
+
 									<BarStack
 										data={data}
 										keys={[...divergingBar.negativeCategories, ...divergingBar.positiveCategories]}
@@ -342,7 +450,7 @@ const DivergingBarVertical = () => {
 											barStacks.map((barStack) => {
 												return barStack.bars.map((bar) => {
 													const category: string = bar.key;
-													const barData = bar.bar['data'];
+													const barData = bar.bar.data;
 													const barValue: number = barData[category as keyof typeof barData];
 													const customLabelText = getCustomLabelText(barData, category);
 													const customLabel =
@@ -385,6 +493,23 @@ const DivergingBarVertical = () => {
 													const seriesHidden = seriesMaskView.isHidden(category);
 													const shapeOpacity =
 														(paint.opacity ?? 1) * categoryOpacity * (seriesHidden ? 0 : 1);
+													const labelPosition = withDivergingBarLabelDy(
+														positionBarLabel(
+															{
+																x: bar.x,
+																y: bar.y,
+																width: bar.width,
+																height: bar.height,
+																value: barValue,
+															},
+															labels,
+															labelCutoff,
+															'vertical',
+															'stacked'
+														),
+														barValue,
+														labels.labelPositionDY
+													);
 
 													return (
 														<g key={`barstack-vertical-${barStack.index}-${bar.index}-g`}>
@@ -426,6 +551,7 @@ const DivergingBarVertical = () => {
 																	tooltipData &&
 																	tooltipVisible &&
 																	tooltip.deemphasizeSiblings &&
+																	tooltipData?.tooltipMode !== 'row' &&
 																	(tooltipData?.x !== barData.x ||
 																		tooltipData?.y !== barValue ||
 																		tooltipData?.category !== category)
@@ -450,13 +576,17 @@ const DivergingBarVertical = () => {
 																		x: 0,
 																		y: 0,
 																	};
+																	const tooltipSide: 'top' | 'bottom' =
+																		divergingBar.negativeCategories.includes(
+																			category
+																		)
+																			? 'bottom'
+																			: 'top';
 																	showTooltip({
 																		tooltipData: {
 																			...barData,
-																			y: barValue,
-																			category,
-																			tooltip: customTooltip,
-																			tooltipHeader: customHeader,
+																			tooltipMode: 'row',
+																			tooltipSide,
 																		},
 																		tooltipTop: eventSvgCoords.y,
 																		tooltipLeft: eventSvgCoords.x,
@@ -472,13 +602,17 @@ const DivergingBarVertical = () => {
 																		return;
 																	}
 																	if (tooltipTimeout) clearTimeout(tooltipTimeout);
+																	const focusSide: 'top' | 'bottom' =
+																		divergingBar.negativeCategories.includes(
+																			category
+																		)
+																			? 'bottom'
+																			: 'top';
 																	showTooltip({
 																		tooltipData: {
 																			...barData,
-																			y: barValue,
-																			category,
-																			tooltip: customTooltip,
-																			tooltipHeader: customHeader,
+																			tooltipMode: 'row',
+																			tooltipSide: focusSide,
 																		},
 																		tooltipTop: bar.y,
 																		tooltipLeft: bar.x,
@@ -490,24 +624,13 @@ const DivergingBarVertical = () => {
 																labelCutoff < Math.abs(barValue) &&
 																!seriesHidden && (
 																	<AnimatedBarLabel
-																		key={`barstack-horizontal-label-${barStack.index}-${bar.index}`}
-																		{...positionBarLabel(
-																			{
-																				x: bar.x,
-																				y: bar.y,
-																				width: bar.width,
-																				height: bar.height,
-																				value: barValue,
-																			},
-																			labels,
-																			labelCutoff,
-																			'vertical',
-																			'stacked'
-																		)}
+																		key={`barstack-vertical-label-${barStack.index}-${bar.index}`}
+																		x={labelPosition.x}
+																		y={labelPosition.y}
 																		dataPoint={barData}
 																		category={category}
-																		defaultDx={0}
-																		defaultDy={0}
+																		defaultDx={labels.labelPositionDX}
+																		defaultDy={labelPosition.dy}
 																		chartInnerWidth={innerWidth}
 																		chartInnerHeight={innerHeight}
 																		fill={getBarLabelFill(
@@ -522,6 +645,7 @@ const DivergingBarVertical = () => {
 																			tooltipData &&
 																			tooltipVisible &&
 																			tooltip.deemphasizeSiblings &&
+																			tooltipData?.tooltipMode !== 'row' &&
 																			(tooltipData?.x !== barData.x ||
 																				tooltipData?.y !== barValue ||
 																				tooltipData?.category !== category)
@@ -529,13 +653,14 @@ const DivergingBarVertical = () => {
 																				: 1
 																		}
 																		{...labelProps}
+																		dy={labelPosition.dy}
 																	>
 																		{customLabel ||
 																			`${getLabelFormat(
 																				barValue,
-																				bar.key,
+																				category,
 																				labels,
-																				null
+																				labelCutoff
 																			)}`}
 																	</AnimatedBarLabel>
 																)}
@@ -545,6 +670,55 @@ const DivergingBarVertical = () => {
 											})
 										}
 									</BarStack>
+
+									{secondaryActive && (
+										<Group style={{ pointerEvents: 'none' }}>
+											<BarStack
+												data={secondaryGroupData}
+												keys={[
+													...divergingBar.secondary!.negativeCategories,
+													...divergingBar.secondary!.positiveCategories,
+												]}
+												height={innerHeight}
+												x={getIndependentValue}
+												xScale={groupScale}
+												yScale={dependentScale}
+												color={(key) => resolveSecondaryPaint(key).fill ?? 'none'}
+												offset={'diverging'}
+											>
+												{(barStacks) =>
+													barStacks.map((barStack) =>
+														barStack.bars.map((bar) => {
+															const barData = bar.bar.data;
+															const category = bar.key;
+															const barValue: number =
+																barData[category as keyof typeof barData];
+															const paint = resolveSecondaryPaint(category);
+															const seriesHidden = seriesMaskView.isHidden(category);
+															const ghostOpacity =
+																(paint.opacity ?? 0.4) * (seriesHidden ? 0 : 1);
+															return (
+																<AnimatedBar
+																	orientation="vertical"
+																	baseline={dependentScale(0)}
+																	key={`ghost-${barStack.index}-${bar.index}`}
+																	x={bar.x}
+																	y={bar.y}
+																	tabIndex={seriesHidden ? -1 : 0}
+																	width={bar.width}
+																	height={barValue ? Math.abs(bar.height) : 0}
+																	fill={paint.fill ?? 'none'}
+																	stroke={paint.stroke}
+																	strokeWidth={paint.strokeWidth}
+																	opacity={ghostOpacity}
+																/>
+															);
+														})
+													)
+												}
+											</BarStack>
+										</Group>
+									)}
 
 									{/* Net value labels (positive / above) */}
 									{netValues.active && netValues.positive.category && (
@@ -652,24 +826,24 @@ const DivergingBarVertical = () => {
 					{annotationsVisible && (
 						<AnnotationsLayer
 							config={annotations}
-							width={calculatedChartWidth}
+							width={svgWidth}
 							height={height}
 							layout={layout}
-							chartWidth={calculatedChartWidth}
+							chartWidth={svgWidth}
 						/>
 					)}
 					{drawings?.active && !wpEditorFunctions && (
 						<DrawingsLayer
 							config={drawings}
-							width={calculatedChartWidth}
+							width={svgWidth}
 							height={height}
 							layout={layout}
-							chartWidth={calculatedChartWidth}
+							chartWidth={svgWidth}
 						/>
 					)}
 				</svg>
 				{legend.active && (
-					<StyledLegend legend={legend} layoutWidth={width} chartWidth={chartWidth}>
+					<StyledLegend legend={legend} layoutWidth={width} chartWidth={svgWidth}>
 						<LegendOrdinal
 							{...legendProps}
 							scale={colorScale}
@@ -700,7 +874,17 @@ const DivergingBarVertical = () => {
 					tooltipData &&
 					tooltipVisible &&
 					!seriesMaskShouldHideTooltip(seriesMaskView, {
+						tooltipMode: tooltipData.tooltipMode,
 						category: tooltipData.category,
+						rowCategoryKeys:
+							tooltipData.tooltipMode === 'row'
+								? divergingRowTooltipGroups(
+										divergingBar,
+										secondaryActive,
+										tooltipData.tooltipSide,
+										tooltip.mode === 'unified'
+									).flat()
+								: undefined,
 					}) && (
 						<StyledTooltip
 							top={tooltipTop}
@@ -709,47 +893,15 @@ const DivergingBarVertical = () => {
 							containerRef={svgRef}
 							isMobile={isMobileTooltip}
 						>
-							<>
-								{tooltip.headerActive && (
-									<div
-										style={{
-											marginBottom: '10px',
-										}}
-									>
-										<strong>
-											{tooltipData.tooltipHeader
-												? tooltipData.tooltipHeader
-												: getTooltipHeaderFormat(
-														{
-															x: tooltipData.x,
-															category: tooltipData.category,
-														},
-														tooltip
-													)}
-										</strong>
-									</div>
-								)}
-							</>
-							<div
-								dangerouslySetInnerHTML={{
-									__html: tooltipData.tooltip
-										? tooltipData.tooltip
-										: getTooltipFormat(
-												{
-													x: tooltipData.x,
-													y: tooltipData.y,
-													category: tooltipData.category,
-													color: resolveCategoryColor({
-														category: tooltipData.category || '',
-														fallback: colorScale(tooltipData.category || ''),
-														dataRender,
-													}),
-													data: tooltipData,
-												},
-												tooltip,
-												dataRender
-											),
-								}}
+							<UnifiedBarTooltipBody
+								tooltipData={tooltipData}
+								tooltip={tooltip}
+								divergingBar={divergingBar}
+								secondaryActive={secondaryActive}
+								seriesMaskView={seriesMaskView}
+								secondaryLabelColor={secondaryLabelColor}
+								colorScale={colorScale}
+								dataRender={dataRender}
 							/>
 						</StyledTooltip>
 					)}

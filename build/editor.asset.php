@@ -1,1 +1,1 @@
-<?php return array('dependencies' => array('classnames', 'd3-array', 'd3-geo-projection', 'dompurify', 'emotion-styled', 'prc-charting-utilities', 'react', 'react-dom', 'wp-element'), 'version' => 'b924dde295a38a18aa4c');
+<?php return array('dependencies' => array('classnames', 'd3-array', 'd3-geo-projection', 'dompurify', 'emotion-styled', 'prc-charting-utilities', 'react', 'react-dom', 'wp-element'), 'version' => '645d693a11ffc54201d0');

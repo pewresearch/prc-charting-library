@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { createElement } from 'react';
 import { render } from '@testing-library/react';
 import { baseConfig, DataProvider, SMALL_MULTIPLES_SHARED_SERIES_KEY } from '@prc/charting-utilities';
-import SmallMultiples from '../../src/lib/charts/small-multiples/SmallMultiples';
+import SmallMultiples from '../../src/lib/charts/SmallMultiples';
 
 // jsdom has no canvas; text measuring only needs a width.
 window.HTMLCanvasElement.prototype.getContext = () => ({ measureText: () => ({ width: 0 }) });

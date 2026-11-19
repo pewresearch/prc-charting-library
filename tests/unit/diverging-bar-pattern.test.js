@@ -1,6 +1,7 @@
 import { createElement } from 'react';
 import { render } from '@testing-library/react';
 import { DataProvider, baseConfig } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities';
+import { createSeriesMaskView } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/utilities/seriesMask';
 import DivergingBarHorizontal from '../../src/lib/charts/DivergingBarHorizontal';
 import DivergingBarVertical from '../../src/lib/charts/DivergingBarVertical';
 
@@ -172,6 +173,89 @@ describe('diverging bar series patterns', () => {
 		});
 
 		expect(markup).toContain('stroke="light-dark(#000000, #ffffff)"');
+	});
+
+	test('vertical ghost overlay follows the color scheme stroke', () => {
+		const markup = renderDiverging(DivergingBarVertical, 'vertical', undefined, {
+			active: true,
+			negativeCategories: ['DemsGhost'],
+			positiveCategories: ['RepsGhost'],
+		});
+
+		expect(markup).toContain('stroke="light-dark(#000000, #ffffff)"');
+	});
+
+	test('vertical chart does not draw a neutral bar', () => {
+		const markup = renderDiverging(
+			DivergingBarVertical,
+			'vertical',
+			{
+				Neutral: {
+					pattern: 'striped',
+				},
+			},
+			undefined,
+			{
+				neutralBar: {
+					...baseConfig.divergingBar.neutralBar,
+					active: true,
+					category: 'Neutral',
+				},
+			}
+		);
+
+		expect(markup).not.toContain('fill="url(#series-pattern-neutral)"');
+	});
+
+	test('vertical legend mask hides a series and drops it from a row tooltip check', () => {
+		const seriesMask = createSeriesMaskView({
+			armed: true,
+			hidden: new Set(['Dems']),
+			toggle: () => {},
+			revision: 1,
+		});
+		const config = {
+			...baseConfig,
+			layout: {
+				...baseConfig.layout,
+				type: 'diverging-bar',
+				orientation: 'vertical',
+			},
+			colors: ['#456A83', '#BF3B27'],
+			labels: {
+				...baseConfig.labels,
+				active: true,
+				labelCutoff: 0,
+			},
+			dataRender: {
+				...baseConfig.dataRender,
+				categories: ['Dems', 'Reps'],
+				sortOrder: 'none',
+			},
+			divergingBar: {
+				...baseConfig.divergingBar,
+				negativeCategories: ['Dems'],
+				positiveCategories: ['Reps'],
+			},
+		};
+		const { container } = render(
+			createElement(
+				DataProvider,
+				{
+					value: {
+						data: [{ x: 'Adults', Dems: 40, Reps: 60 }],
+						config,
+						tableData: { header: [], rows: [] },
+						seriesMask,
+					},
+				},
+				createElement(DivergingBarVertical)
+			)
+		);
+
+		const hiddenBar = container.querySelector('rect[tabindex="-1"]');
+		expect(hiddenBar).not.toBeNull();
+		expect(hiddenBar.getAttribute('opacity')).toBe('0');
 	});
 
 	test('vertical primary bars render and reference the series pattern', () => {

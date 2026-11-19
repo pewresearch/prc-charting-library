@@ -412,9 +412,7 @@ src/lib/
 ├── overlays/     # 3 — Chrome: Legend, Tooltip, axes, BreakLine,
 │                 #     PlotBands, AlignmentGuides, annotations
 ├── charts/       # 4 — One renderer per chart type
-│   ├── maps/     #     AlbersUSA, AlbersUSACBSA, HexUSA, World, ...
-│   ├── waffle/
-│   └── small-multiples/
+│   └── maps/     #     AlbersUSA, AlbersUSACBSA, HexUSA, World, ...
 ├── controller/   # 5 — ChartBuilder* orchestration + type routing
 ├── presets/      # —   Example chart configs (dev/examples only)
 └── data/maps/    # —   GeoJSON/topology data + generation scripts
