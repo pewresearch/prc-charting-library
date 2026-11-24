@@ -1,4 +1,4 @@
-import { facetDataByColumn } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByColumn';
+import { facetDataByColumn } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/facetDataByColumn';
 
 describe('facetDataByColumn', () => {
 	const wideData = [

@@ -1,4 +1,4 @@
-import { resolveSliceDomain } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/resolveSliceDomain';
+import { resolveSliceDomain } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/sliceDomain';
 
 describe('resolveSliceDomain', () => {
 	it('collects unique slice categories (x) across all panel series', () => {

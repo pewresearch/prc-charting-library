@@ -323,3 +323,77 @@ describe('diverging bar series patterns', () => {
 		expect(markup).toContain('NET');
 	});
 });
+
+function queryLines(markup, selector) {
+	const container = document.createElement('div');
+	container.innerHTML = markup;
+	return [...container.querySelectorAll(selector)];
+}
+
+const AXIS_STROKE = '#112233';
+const axisStrokeConfig = {
+	dependentAxis: {
+		...baseConfig.dependentAxis,
+		axis: { ...baseConfig.dependentAxis.axis, stroke: AXIS_STROKE },
+	},
+};
+
+describe.each([
+	['horizontal', DivergingBarHorizontal],
+	['vertical', DivergingBarVertical],
+])('%s dividing line', (orientation, Component) => {
+	test.each([
+		['omitted', undefined],
+		['empty', { stroke: '' }],
+	])('follows the dependent axis stroke when zeroLine is %s', (_label, zeroLine) => {
+		const markup = renderDiverging(Component, orientation, undefined, undefined, { zeroLine }, axisStrokeConfig);
+
+		expect(queryLines(markup, `line[stroke="${AXIS_STROKE}"]`).length).toBeGreaterThan(0);
+	});
+
+	test('uses zeroLine.stroke when set', () => {
+		const markup = renderDiverging(
+			Component,
+			orientation,
+			undefined,
+			undefined,
+			{ zeroLine: { stroke: '#ff00aa' } },
+			axisStrokeConfig
+		);
+
+		expect(queryLines(markup, 'line[stroke="#ff00aa"]').length).toBeGreaterThan(0);
+		expect(queryLines(markup, `line[stroke="${AXIS_STROKE}"]`)).toHaveLength(0);
+	});
+});
+
+describe('horizontal neutral separator', () => {
+	function renderSeparator(separatorStroke) {
+		const markup = renderDiverging(DivergingBarHorizontal, 'horizontal', undefined, undefined, {
+			neutralBar: {
+				...baseConfig.divergingBar.neutralBar,
+				active: true,
+				category: 'Neutral',
+				separator: true,
+				separatorStroke,
+			},
+		});
+		return queryLines(markup, 'line[stroke-dasharray="2 2"]');
+	}
+
+	test.each([
+		['omitted', undefined],
+		['empty', ''],
+	])('defaults to the light-dark neutral gray when separatorStroke is %s', (_label, separatorStroke) => {
+		const separators = renderSeparator(separatorStroke);
+
+		expect(separators).toHaveLength(1);
+		expect(separators[0].getAttribute('stroke')).toBe('light-dark(#C6C8CA, #404345)');
+	});
+
+	test('uses separatorStroke when set', () => {
+		const separators = renderSeparator('#00aaff');
+
+		expect(separators).toHaveLength(1);
+		expect(separators[0].getAttribute('stroke')).toBe('#00aaff');
+	});
+});

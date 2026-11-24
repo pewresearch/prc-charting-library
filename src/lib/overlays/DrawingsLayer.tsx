@@ -18,13 +18,13 @@ import type {
 	PathDrawing,
 	PanelLike,
 	PanelRect,
+	PositioningScale,
 } from '@prc/charting-utilities';
-import { DataContext, resolvePanelRect } from '@prc/charting-utilities';
+import { DataContext, getPositioningScale, resolvePanelRect } from '@prc/charting-utilities';
 import { useContext, useEffect, useRef, useState } from 'react';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
 import { DrawingSelectionHandles } from './DrawingSelectionHandles';
-import { getPositioningScale, type PositioningScale } from './getPositioningScale';
 
 // Re-export types for consumers
 export type {

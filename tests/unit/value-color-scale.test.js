@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { createValueColorScale } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/heatMapTable/createValueColorScale';
+import { createValueColorScale } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/valueColorScale';
 
 describe('createValueColorScale legend items', () => {
 	test('threshold has one item per bin, even with spare and repeated palette colors', () => {

@@ -15,5 +15,3 @@ export { DrawingsLayer } from './DrawingsLayer';
 export { ClickableTicks } from './ClickableTicks';
 export { ClickableLegend } from './ClickableLegend';
 export { SeriesPatternDefs } from './SeriesPatternDefs';
-export { getPositioningScale, scalePositionToDisplay, scalePositionToLayout } from './getPositioningScale';
-export type { PositioningContext, PositioningScale, GetPositioningScaleArgs } from './getPositioningScale';

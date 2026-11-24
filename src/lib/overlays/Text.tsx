@@ -7,12 +7,16 @@ import type {
 	PanelRect,
 	TableData,
 	TextAnnotation,
+	PositioningScale,
 } from '@prc/charting-utilities';
 import {
 	contrastLabelFillForLightDark,
 	DataContext,
 	DEFAULT_FONT_FAMILY,
+	getPositioningScale,
 	resolvePanelRect,
+	scalePositionToDisplay,
+	scalePositionToLayout,
 	wrapRichText,
 } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
@@ -20,18 +24,38 @@ import { useContext, useEffect, useRef, useState } from 'react';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
 import { RichTextSpans } from '../primitives/RichText';
-import {
-	getPositioningScale,
-	scalePositionToDisplay,
-	scalePositionToLayout,
-	type PositioningScale,
-} from './getPositioningScale';
+import { ImageAnnotationResizeHandles } from './ImageAnnotationResizeHandles';
 
 const dominantBaselineFromAnchor = (verticalAnchor?: string): 'middle' | 'hanging' | 'auto' => {
 	if (verticalAnchor === 'middle') return 'middle';
 	if (verticalAnchor === 'end') return 'hanging';
 	return 'auto';
 };
+
+const anchorOffset = (size: number, anchor?: string): number => {
+	if (anchor === 'middle') return -size / 2;
+	if (anchor === 'end') return -size;
+	return 0;
+};
+
+/**
+ * Top-left corner of an image annotation relative to its x/y point.
+ * Horizontal: start = left edge, middle = center, end = right edge.
+ * Vertical: start = top edge, middle = center, end = bottom edge.
+ */
+export const getImageAnnotationOffset = (
+	width: number,
+	height: number,
+	textAnchor?: string,
+	verticalAnchor?: string
+): { x: number; y: number } => ({
+	x: anchorOffset(width, textAnchor),
+	y: anchorOffset(height, verticalAnchor),
+});
+
+export const isImageAnnotation = (annotation: Pick<TextAnnotation, 'kind'>): boolean => annotation?.kind === 'image';
+
+const DEFAULT_IMAGE_SIZE = 100;
 
 // SVG Annotation Component
 export const Annotation = ({
@@ -119,6 +143,8 @@ export const Annotation = ({
 	// react-draggable needs an explicit nodeRef under React 19 (findDOMNode was removed).
 	// Must point at the underlying <g>, so it's passed to <Group> via innerRef.
 	const dragRef = useRef<SVGGElement>(null);
+	const isResizingRef = useRef(false);
+	const [liveImageSize, setLiveImageSize] = useState<{ width: number; height: number } | null>(null);
 
 	// Sync from props when not dragging
 	useEffect(() => {
@@ -126,6 +152,13 @@ export const Annotation = ({
 		dragPositionRef.current = { x: displayX, y: displayY };
 		setDragPosition({ x: displayX, y: displayY });
 	}, [displayX, displayY]);
+
+	const isImage = isImageAnnotation(annotation);
+	useEffect(() => {
+		if (!isResizingRef.current) {
+			setLiveImageSize(null);
+		}
+	}, [isImage, annotation.width, annotation.height]);
 
 	// All hooks must be called before any conditional return (Rules of Hooks).
 
@@ -166,9 +199,6 @@ export const Annotation = ({
 		}
 	};
 
-	const textLines = wrapRichText(text, maxWidth, fontSize, renderedFontFamily, fontWeight, fontStyle);
-	const lineHeight = fontSize * 1.2;
-
 	// Determine if draggable
 	const isDraggable = !!wpEditorFunctions?.annotations && !link;
 
@@ -183,54 +213,151 @@ export const Annotation = ({
 		cursor = 'pointer';
 	}
 
-	// Wrap in link if provided
-	// Note: text is at 0,0 because Group is already translated
-	const textElement = (
-		<text
-			x={0}
-			y={0}
-			fontSize={fontSize}
-			fontFamily={renderedFontFamily}
-			fontWeight={fontWeight}
-			fontStyle={fontStyle}
-			fill={fill}
-			textAnchor={textAnchor}
-			dominantBaseline={dominantBaselineFromAnchor(verticalAnchor)}
-			{...(textOutline && {
-				stroke: contrastLabelFillForLightDark(fill),
-				strokeWidth: 1,
-				paintOrder: 'stroke',
-			})}
-			style={{
-				cursor,
-				opacity,
-				userSelect: 'none',
-				pointerEvents: 'all',
-			}}
-			onClick={(event: React.MouseEvent<SVGTextElement>) => {
-				if (hasDraggedRef.current) {
-					hasDraggedRef.current = false;
-					return;
-				}
-				if (wpEditorFunctions?.annotations?.onClick && id) {
-					wpEditorFunctions.annotations.onClick(id, event.currentTarget);
-					return;
-				}
-				if (onClick && id) onClick(id);
-				if (link) window.open(link, '_blank');
-			}}
-		>
-			{textLines.map((lineRuns, lineIndex) => (
-				<tspan key={lineIndex} x={0} dy={lineIndex === 0 ? 0 : lineHeight}>
-					<RichTextSpans runs={lineRuns} />
-				</tspan>
-			))}
-		</text>
-	);
+	const handleClick = (event: React.MouseEvent<SVGElement>) => {
+		if (hasDraggedRef.current) {
+			hasDraggedRef.current = false;
+			return;
+		}
+		if (wpEditorFunctions?.annotations?.onClick && id) {
+			// Image annotations anchor the popover on the group, which stays mounted
+			// when picking media swaps the placeholder for an <image>.
+			const anchor = isImage ? (dragRef.current ?? event.currentTarget) : event.currentTarget;
+			wpEditorFunctions.annotations.onClick(id, anchor);
+			return;
+		}
+		if (onClick && id) onClick(id);
+		if (link) window.open(link, '_blank');
+	};
+
+	const interactiveStyle = {
+		cursor,
+		opacity,
+		userSelect: 'none' as const,
+		pointerEvents: 'all' as const,
+	};
+
+	const selectedAnnotationId = wpEditorFunctions?.annotations?.selectedAnnotationId;
+	const isImageSelected =
+		isImage &&
+		id !== undefined &&
+		id !== null &&
+		selectedAnnotationId !== undefined &&
+		selectedAnnotationId !== null &&
+		String(id) === String(selectedAnnotationId);
+
+	let content: React.ReactNode;
+	let imageResizeOverlay: React.ReactNode = null;
+	if (isImage) {
+		const { src, width: imageWidth, height: imageHeight, keepAspectRatio = true, alt } = annotation;
+		const w = liveImageSize?.width ?? (Number(imageWidth) > 0 ? Number(imageWidth) : DEFAULT_IMAGE_SIZE);
+		const h = liveImageSize?.height ?? (Number(imageHeight) > 0 ? Number(imageHeight) : DEFAULT_IMAGE_SIZE);
+		const offset = getImageAnnotationOffset(w, h, textAnchor, verticalAnchor);
+		const label = alt?.trim();
+		if (src) {
+			content = (
+				<image
+					className="cb__annotation-image"
+					href={src}
+					x={offset.x}
+					y={offset.y}
+					width={w}
+					height={h}
+					preserveAspectRatio={keepAspectRatio ? 'xMidYMid meet' : 'none'}
+					{...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true })}
+					style={interactiveStyle}
+					onClick={handleClick}
+				/>
+			);
+		} else if (wpEditorFunctions?.annotations) {
+			// Editor-only target so a new image annotation can be clicked before media is chosen.
+			content = (
+				<g className="cb__annotation-image-placeholder" style={interactiveStyle} onClick={handleClick}>
+					<rect
+						x={offset.x}
+						y={offset.y}
+						width={w}
+						height={h}
+						fill="rgba(0, 124, 186, 0.08)"
+						stroke="#007cba"
+						strokeDasharray="4 3"
+					/>
+					<text
+						x={offset.x + w / 2}
+						y={offset.y + h / 2}
+						textAnchor="middle"
+						dominantBaseline="middle"
+						fontSize={11}
+						fontFamily={DEFAULT_FONT_FAMILY}
+						fill="#007cba"
+					>
+						Choose image
+					</text>
+				</g>
+			);
+		} else {
+			return null;
+		}
+
+		if (isImageSelected && wpEditorFunctions?.annotations?.onImageResizeEnd && id) {
+			imageResizeOverlay = (
+				<ImageAnnotationResizeHandles
+					groupRef={dragRef}
+					box={{ x: offset.x, y: offset.y, width: w, height: h }}
+					keepAspectRatio={keepAspectRatio !== false}
+					onResizeStart={() => {
+						isResizingRef.current = true;
+						wpEditorFunctions.annotations.onImageResizeStart?.();
+					}}
+					onResize={(size) => setLiveImageSize(size)}
+					onResizeEnd={(size) => {
+						isResizingRef.current = false;
+						setLiveImageSize(null);
+						wpEditorFunctions.annotations.onImageResizeEnd(id, size.width, size.height);
+					}}
+					onResizeCancel={() => {
+						isResizingRef.current = false;
+						setLiveImageSize(null);
+						wpEditorFunctions.annotations.onImageResizeCancel?.();
+					}}
+				/>
+			);
+		}
+	} else {
+		const textLines = wrapRichText(text ?? '', maxWidth, fontSize, renderedFontFamily, fontWeight, fontStyle);
+		const lineHeight = fontSize * 1.2;
+		// Note: text is at 0,0 because Group is already translated
+		content = (
+			<text
+				x={0}
+				y={0}
+				fontSize={fontSize}
+				fontFamily={renderedFontFamily}
+				fontWeight={fontWeight}
+				fontStyle={fontStyle}
+				fill={fill}
+				textAnchor={textAnchor}
+				dominantBaseline={dominantBaselineFromAnchor(verticalAnchor)}
+				{...(textOutline && {
+					stroke: contrastLabelFillForLightDark(fill),
+					strokeWidth: 1,
+					paintOrder: 'stroke',
+				})}
+				style={interactiveStyle}
+				onClick={handleClick}
+			>
+				{textLines.map((lineRuns, lineIndex) => (
+					<tspan key={lineIndex} x={0} dy={lineIndex === 0 ? 0 : lineHeight}>
+						<RichTextSpans runs={lineRuns} />
+					</tspan>
+				))}
+			</text>
+		);
+	}
 
 	const groupContent = (
 		<Group innerRef={dragRef} transform={`translate(${currentX}, ${currentY}) rotate(${rotation})`}>
-			{textElement}
+			{content}
+			{imageResizeOverlay}
 		</Group>
 	);
 

@@ -2,12 +2,12 @@ import { describe, expect, it } from '@jest/globals';
 import {
 	enrichFacetRow,
 	isFacetMetaKey,
-} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/enrichFacetRow';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/enrichFacetRow';
 import {
 	facetDataByColumn,
 	deriveCategories,
-} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByColumn';
-import { facetDataByGroup } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/facetDataByGroup';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/facetDataByColumn';
+import { facetDataByGroup } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/facetDataByGroup';
 
 describe('enrichFacetRow', () => {
 	it('preserves tooltip/label metadata and mirrors the series value onto the category key', () => {

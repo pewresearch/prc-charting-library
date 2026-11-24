@@ -262,9 +262,17 @@ function MyChart() {
 }
 ```
 
-The full export surface is `ChartBuilderWrapper`, `ChartBuilderTextWrapper`,
-`ChartBuilderRenderer`, and `useChartStore` — see
-[`src/lib/index.ts`](src/lib/index.ts).
+The entry [`src/lib/index.ts`](src/lib/index.ts) exports `ChartBuilderWrapper`,
+`ChartBuilderTextWrapper`, `ChartBuilderRenderer`, and `useChartStore`.
+
+The entry also re-exports helpers from `@prc/charting-utilities` for
+`prc-chart-builder`, for example `stripRichText`, `getPatternType`, and
+`getPositioningScale`. `prc-chart-builder` does not import
+`@prc/charting-utilities`: that entry has React hooks, and the chart-builder
+`view.js` Script Module build rejects `react`. To give chart-builder one more
+helper, add its name to the helper block in `src/lib/index.ts`.
+`npm run lint:repo` fails a chart-builder import of a name that the entry does
+not export (lint code `charting-library-export`).
 
 ## Key Features
 
@@ -300,8 +308,8 @@ tooltip: {
 
 Unified mode bypasses Voronoi so the tooltip stays live anywhere in the column,
 including empty plot space above the lines. Column assembly lives in
-`@prc/charting-utilities/unifiedTooltip/` (`buildUnifiedTooltipColumns`,
-`findNearestColumn`); rendering uses `useUnifiedTooltip`, `Crosshair`, and
+`@prc/charting-utilities` `compute/unifiedTooltipColumns.ts`
+(`buildUnifiedTooltipColumns`, `findNearestColumn`); rendering uses `useUnifiedTooltip`, `Crosshair`, and
 `UnifiedTooltipRows` in `src/lib/overlays/`.
 
 `tooltip.minDisplayValue` applies in both modes — values below the floor render

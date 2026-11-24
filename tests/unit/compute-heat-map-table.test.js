@@ -1,10 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
-import { computeHeatMapTableLayout } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/heatMapTable/computeHeatMapTableLayout';
-import { computeHeatMapTableCells } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/heatMapTable/computeHeatMapTableCells';
+import { computeHeatMapTableLayout } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/tableColumnLayout';
+import { computeHeatMapTableCells } from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/tableCells';
 import {
 	createValueColorScale,
 	resolveBinPaint,
-} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/heatMapTable/createValueColorScale';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/valueColorScale';
 
 describe('computeHeatMapTableLayout', () => {
 	it('fills the chart width from the axis line, leaving axis room to padding', () => {

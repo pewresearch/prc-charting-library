@@ -1,7 +1,7 @@
 import {
 	computeHorizontalBarRects,
 	computeBarPanelHeight,
-} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/smallMultiples/computeHorizontalBarRects';
+} from '../../../prc-shared/includes/scripts/src/@prc/charting-utilities/compute/barRects';
 
 describe('computeBarPanelHeight', () => {
 	it('derives cell height from band count and row height', () => {

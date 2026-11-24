@@ -21,6 +21,7 @@ import type {
 	BaseConfig,
 	DeclutterLabelInput,
 	FlatData,
+	PositioningScale,
 	Size,
 	SmallMultiplesGroupPanel,
 	TableData,
@@ -84,20 +85,19 @@ import {
 	legendCategoryShapeStyle,
 	contrastLabelFillForLightDark,
 	wrapRichText,
+	getPositioningScale,
+	scalePositionToDisplay,
+	scalePositionToLayout,
 } from '@prc/charting-utilities';
 import {
 	AnnotationsLayer,
 	ClickableLegend,
 	ClickableTicks,
 	DrawingsLayer,
-	getPositioningScale,
 	PlotBands,
 	SeriesPatternDefs,
 	StyledLegend,
 	StyledTooltip,
-	scalePositionToDisplay,
-	scalePositionToLayout,
-	type PositioningScale,
 } from '../overlays';
 import {
 	AnimatedArc,

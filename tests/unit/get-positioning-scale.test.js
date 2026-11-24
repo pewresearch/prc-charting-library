@@ -2,7 +2,7 @@ import {
 	getPositioningScale,
 	scalePositionToDisplay,
 	scalePositionToLayout,
-} from '../../src/lib/overlays/getPositioningScale';
+} from '@prc/charting-utilities';
 
 const layout = {
 	width: 640,

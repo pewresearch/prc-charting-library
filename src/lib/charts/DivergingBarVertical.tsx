@@ -769,7 +769,7 @@ const DivergingBarVertical = () => {
 											x: startX + width,
 											y: dependentScale(0),
 										}}
-										stroke={dependentAxis.axis.stroke}
+										stroke={divergingBar.zeroLine?.stroke || dependentAxis.axis.stroke}
 										strokeWidth={dependentAxis.axis.strokeWidth}
 										pointerEvents="none"
 									/>

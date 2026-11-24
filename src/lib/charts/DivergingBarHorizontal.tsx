@@ -839,7 +839,7 @@ const DivergingBarHorizontal = () => {
 						<VerticalLine
 							from={{ x: dependentScale(0), y: 0 }}
 							to={{ x: dependentScale(0), y: actualContentHeight }}
-							stroke={dependentAxis.axis.stroke}
+							stroke={divergingBar.zeroLine?.stroke || dependentAxis.axis.stroke}
 							strokeWidth={dependentAxis.axis.strokeWidth}
 							pointerEvents="none"
 						/>
@@ -1076,7 +1076,7 @@ const DivergingBarHorizontal = () => {
 										x: dependentScale(divergingBar.neutralBar.separatorOffsetX),
 										y: actualContentHeight,
 									}}
-									stroke={'#ccc'}
+									stroke={divergingBar.neutralBar.separatorStroke || 'light-dark(#C6C8CA, #404345)'}
 									strokeWidth={dependentAxis.axis.strokeWidth}
 									strokeDasharray={'2 2'}
 									pointerEvents="none"
