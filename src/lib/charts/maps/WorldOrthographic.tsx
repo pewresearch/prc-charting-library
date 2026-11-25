@@ -44,6 +44,7 @@ import {
 	createTopologyLoader,
 	getTooltipMapDeemphasisProps,
 	createValueColorScale,
+	releasePointerCaptureSafely,
 } from '@prc/charting-utilities';
 import {
 	StyledTooltip,
@@ -514,8 +515,8 @@ const WorldOrthographic = () => {
 			draggingRef.current = false;
 			setIsDragging(false);
 			lastPointRef.current = null;
-			(event.target as Element).releasePointerCapture?.(event.pointerId);
 			wpEditorFunctions?.globe?.onDragEnd?.();
+			releasePointerCaptureSafely(event.target, event.pointerId);
 		},
 		[wpEditorFunctions]
 	);
@@ -608,6 +609,8 @@ const WorldOrthographic = () => {
 					onPointerMove={handlePointerMove}
 					onPointerUp={endDrag}
 					onPointerLeave={endDrag}
+					onPointerCancel={endDrag}
+					onLostPointerCapture={endDrag}
 					style={{
 						pointerEvents: tooltip.active || dragToRotate ? 'auto' : 'none',
 						cursor: dragCursor,

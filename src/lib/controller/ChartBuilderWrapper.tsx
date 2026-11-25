@@ -1,9 +1,9 @@
 // External dependencies
-import { ErrorBoundary } from 'react-error-boundary';
 import { useMemo } from 'react';
 
 // Internal dependencies
 import ChartBuilder from './ChartBuilder';
+import { ChartErrorBoundary, ErrorFallback } from './ChartErrorBoundary';
 import {
 	DataProvider,
 	selectPlotRows,
@@ -59,22 +59,6 @@ function recordRender(chartId?: string) {
 		return;
 	}
 	counts[chartId] = (counts[chartId] || 0) + 1;
-}
-
-function ErrorFallback(props: any) {
-	const { error, fallbackImg } = props;
-	// eslint-disable-next-line no-console
-	console.log({ 'Error:': error.message });
-	return (
-		<>
-			{fallbackImg && <img src={fallbackImg} alt="fallback" style={{ width: '100%', height: 'auto' }} />}
-			{!fallbackImg && (
-				<div role="alert">
-					<p>This chart is currently unavailable. Please try again later</p>
-				</div>
-			)}
-		</>
-	);
 }
 
 const ChartBuilderWrapper = ({
@@ -151,9 +135,9 @@ const ChartBuilderWrapper = ({
 				legendItems,
 			}}
 		>
-			<ErrorBoundary FallbackComponent={(props) => <ErrorFallback {...props} fallbackImg={fallbackImg} />}>
+			<ChartErrorBoundary resetKeys={[resolvedData, resolvedConfig]} fallbackImg={fallbackImg}>
 				<ChartBuilder />
-			</ErrorBoundary>
+			</ChartErrorBoundary>
 		</DataProvider>
 	);
 };

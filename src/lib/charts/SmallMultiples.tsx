@@ -88,6 +88,7 @@ import {
 	getPositioningScale,
 	scalePositionToDisplay,
 	scalePositionToLayout,
+	useDragGesture,
 } from '@prc/charting-utilities';
 import {
 	AnnotationsLayer,
@@ -274,17 +275,16 @@ function PanelTitleLabel({
 
 	const [dragPosition, setDragPosition] = useState(display);
 	const dragPositionRef = useRef(dragPosition);
-	const isDraggingRef = useRef(false);
-	const hasDraggedRef = useRef(false);
+	const gesture = useDragGesture();
 	const dragRef = useRef<SVGGElement>(null);
 
 	const { x: displayX, y: displayY } = display;
 	useEffect(() => {
-		if (isDraggingRef.current) return;
+		if (gesture.isActive()) return;
 		const next = { x: displayX, y: displayY };
 		dragPositionRef.current = next;
 		setDragPosition(next);
-	}, [displayX, displayY]);
+	}, [gesture, displayX, displayY]);
 
 	const displayText =
 		typeof customization?.text === 'string' && customization.text.length > 0 ? customization.text : defaultLabel;
@@ -324,7 +324,9 @@ function PanelTitleLabel({
 			: undefined;
 
 	const handleDrag = (_event: DraggableEvent, data: DraggableData) => {
-		hasDraggedRef.current = true;
+		if (gesture.move(data.deltaX, data.deltaY) === 'ignored') {
+			return;
+		}
 		const next = {
 			x: dragPositionRef.current.x + data.deltaX,
 			y: dragPositionRef.current.y + data.deltaY,
@@ -334,14 +336,13 @@ function PanelTitleLabel({
 	};
 
 	const handleDragStart = () => {
-		hasDraggedRef.current = false;
-		isDraggingRef.current = true;
+		gesture.press();
 		handlers?.onItemDragStart?.(panelKey);
 	};
 
 	const handleDragStop = () => {
 		const layoutPos = scalePositionToLayout(dragPositionRef.current.x, dragPositionRef.current.y, positioningScale);
-		isDraggingRef.current = false;
+		gesture.release();
 		handlers?.onItemDragEnd?.(panelKey, Math.round(layoutPos.x), Math.round(layoutPos.y));
 	};
 
@@ -375,8 +376,7 @@ function PanelTitleLabel({
 				pointerEvents: 'all',
 			}}
 			onClick={(event: React.MouseEvent<SVGTextElement>) => {
-				if (hasDraggedRef.current) {
-					hasDraggedRef.current = false;
+				if (gesture.consumeClick()) {
 					return;
 				}
 				handlers?.onClick?.(panelKey, defaultLabel, event.currentTarget);

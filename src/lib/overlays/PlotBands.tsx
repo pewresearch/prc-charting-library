@@ -7,6 +7,7 @@ import {
 	wrapRichText,
 	contrastLabelFillForLightDark,
 	readPlotBandLabelRotation,
+	useDragGesture,
 } from '@prc/charting-utilities';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
@@ -68,16 +69,14 @@ function PlotBandLabel({
 	const textY = labelStyle.align === 'top' ? labelDy : innerHeight - labelDy;
 	const [offset, setOffset] = useState({ x: 0, y: 0 });
 	const offsetRef = useRef(offset);
-	const isDraggingRef = useRef(false);
-	// Stays true through the click that follows mouseup, same as annotations.
-	const hasDraggedRef = useRef(false);
+	const gesture = useDragGesture();
 	const dragRef = useRef<SVGGElement>(null);
 
 	useEffect(() => {
-		if (isDraggingRef.current) return;
+		if (gesture.isActive()) return;
 		offsetRef.current = { x: 0, y: 0 };
 		setOffset({ x: 0, y: 0 });
-	}, [textX, textY]);
+	}, [gesture, textX, textY]);
 
 	const fontSize = labelStyle.fontSize ?? 10;
 	const fontFamily = labelStyle.fontFamily?.trim() ? labelStyle.fontFamily : DEFAULT_FONT_FAMILY;
@@ -94,13 +93,13 @@ function PlotBandLabel({
 	const clickable = Boolean(labelApi?.onClick && label);
 
 	const handleDrag = (_event: DraggableEvent, data: DraggableData) => {
-		if (data.deltaX === 0 && data.deltaY === 0) {
+		const step = gesture.move(data.deltaX, data.deltaY);
+		if (step === 'ignored') {
 			return;
 		}
-		if (!hasDraggedRef.current) {
+		if (step === 'first') {
 			labelApi?.onDragActivate?.(String(index));
 		}
-		hasDraggedRef.current = true;
 		const next = {
 			x: offsetRef.current.x + data.deltaX,
 			y: offsetRef.current.y + data.deltaY,
@@ -110,14 +109,13 @@ function PlotBandLabel({
 	};
 
 	const handleDragStart = () => {
-		hasDraggedRef.current = false;
-		isDraggingRef.current = true;
+		gesture.press();
 		labelApi?.onDragStart?.(String(index));
 	};
 
 	const handleDragStop = () => {
 		const { x: dragX, y: dragY } = offsetRef.current;
-		isDraggingRef.current = false;
+		gesture.release();
 		// Drop the live translate in this same turn. The saved dx/dy already
 		// include the delta, so leaving the translate on paints the move twice.
 		offsetRef.current = { x: 0, y: 0 };
@@ -169,8 +167,7 @@ function PlotBandLabel({
 					pointerEvents: isDraggable || clickable ? 'all' : undefined,
 				}}
 				onClick={(event) => {
-					if (hasDraggedRef.current) {
-						hasDraggedRef.current = false;
+					if (gesture.consumeClick()) {
 						return;
 					}
 					if (!labelApi?.onClick || !label) return;

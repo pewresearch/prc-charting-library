@@ -29,6 +29,7 @@ import {
 	parseRichText,
 	resolveLegendTextAnchor,
 	stripRichText,
+	useDragGesture,
 	type BaseConfig,
 	type CategoryStyle,
 	type LegendItemCustomization,
@@ -267,25 +268,22 @@ function DetachedLegendItem({
 	const [position, setPosition] = useState(initialPosition);
 	const [isDragging, setIsDragging] = useState(false);
 	const positionRef = useRef(initialPosition);
-	const dragActiveRef = useRef(false);
-	const didDragRef = useRef(false);
+	const gesture = useDragGesture();
 	// react-draggable needs an explicit nodeRef under React 19 (findDOMNode was removed).
 	const dragRef = useRef<HTMLDivElement>(null);
 
 	// Sync local position back to the attribute value when it changes externally
 	// (e.g. editor edits DX/DY in the popover), but ignore during an active drag.
 	useEffect(() => {
-		if (dragActiveRef.current) return;
+		if (gesture.isActive()) return;
 		const scale = getLegendPositioningScale(positioningContext, legendScale);
 		const next = scaleLegendPositionToDisplay(layoutX, layoutY, scale);
 		positionRef.current = next;
 		setPosition(next);
-	}, [layoutX, layoutY, positioningContext, legendScale]);
+	}, [gesture, layoutX, layoutY, positioningContext, legendScale]);
 
 	const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-		// Suppress the click that fires immediately after a drag.
-		if (didDragRef.current) {
-			didDragRef.current = false;
+		if (gesture.consumeClick()) {
 			return;
 		}
 		if (onLegendItemClick) {
@@ -303,17 +301,15 @@ function DetachedLegendItem({
 		: undefined;
 
 	const handleDragStart = () => {
-		dragActiveRef.current = true;
-		didDragRef.current = false;
+		gesture.press();
 		setIsDragging(true);
 		legendItemHandlers?.onItemDragStart?.(itemKey);
 	};
 
 	const handleDrag = (_e: DraggableEvent, data: DraggableData) => {
-		if (data.deltaX === 0 && data.deltaY === 0) {
+		if (gesture.move(data.deltaX, data.deltaY) === 'ignored') {
 			return;
 		}
-		didDragRef.current = true;
 		setPosition((previous) => {
 			const next = { x: previous.x + data.deltaX, y: previous.y + data.deltaY };
 			positionRef.current = next;
@@ -323,7 +319,7 @@ function DetachedLegendItem({
 	};
 
 	const handleDragStop = () => {
-		dragActiveRef.current = false;
+		gesture.release();
 		setIsDragging(false);
 		const scale = getLegendPositioningScale(positioningContext, legendScale);
 		const layoutPosition = scaleLegendPositionToLayout(positionRef.current.x, positionRef.current.y, scale);

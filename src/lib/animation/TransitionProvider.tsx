@@ -27,7 +27,12 @@
  * Phase progression is `setTimeout`-driven off the single schedule from
  * `useTransitionTiming`, matching react-spring's duration model (no
  * physics) so the provider clock and the geometry/label springs stay in
- * sync. Timers are cleared on unmount and on rapid successive `setData`.
+ * sync. Each data change bumps `transition` and restarts the clock, also
+ * mid-exit, because every geometry spring restarts its delay on that change.
+ * Timing objects change identity on re-renders (`isFirstRender`, a `setChart`
+ * config), so the clock reads them through a ref instead of restarting.
+ * If the schedule turns `immediate` mid-flight the machine settles to
+ * `visible`. Model: tests/prc-charting-library/formal/transitions/.
  *
  * When the active schedule is `immediate` (animation disabled, reduced
  * motion, or the editor without an active preview) the machine is skipped
@@ -40,7 +45,7 @@
  * component's returned tree — including charts that emit multiple `<svg>`
  * fragments for group breaks — with a single instance.
  */
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { AnimationFamily } from './useAnimationConfig';
 import { useTransitionTiming, PhaseTiming } from './useTransitionTiming';
 
@@ -92,6 +97,8 @@ interface ProviderState {
 	/** Which schedule drives this transition. */
 	kind: 'initial' | 'update';
 	epoch: number;
+	/** Bumps on every data change; the phase clock restarts on it. */
+	transition: number;
 	/** Reference of the `data` prop that produced the current phase. */
 	data: unknown;
 }
@@ -116,6 +123,7 @@ export function TransitionProvider({ data, family = 'bar', children }: Transitio
 		phase: initial.immediate ? 'visible' : 'animating',
 		kind: 'initial',
 		epoch: 0,
+		transition: 0,
 		data,
 	}));
 
@@ -130,6 +138,7 @@ export function TransitionProvider({ data, family = 'bar', children }: Transitio
 			phase: update.immediate ? 'visible' : 'exiting',
 			kind: 'update',
 			epoch: prev.epoch,
+			transition: prev.transition + 1,
 			data,
 		}));
 	}
@@ -138,36 +147,45 @@ export function TransitionProvider({ data, family = 'bar', children }: Transitio
 	const updatePhase: TransitionPhase = update.immediate ? 'visible' : 'exiting';
 	const phase: TransitionPhase = dataChanged ? updatePhase : state.phase;
 	const epoch = state.epoch;
+	const transition = dataChanged ? state.transition + 1 : state.transition;
 	const activeTiming = kind === 'initial' ? initial : update;
+	const immediate = activeTiming.immediate;
+	const timingRef = useRef(activeTiming);
+	timingRef.current = activeTiming;
 
 	// Phase progression. Each non-idle phase schedules the next; cleanup
 	// cancels in-flight timers on unmount or when a fresh data change resets
 	// the machine mid-flight.
 	useEffect(() => {
-		if (activeTiming.immediate || phase === 'visible') {
+		if (phase === 'visible') {
 			return;
 		}
+		if (immediate) {
+			setState((prev) => (prev.phase === 'visible' ? prev : { ...prev, phase: 'visible' }));
+			return;
+		}
+		const timing = timingRef.current;
 
 		let timer: ReturnType<typeof setTimeout>;
 		if (phase === 'exiting') {
 			timer = setTimeout(() => {
 				setState((prev) => ({ ...prev, phase: 'animating', epoch: prev.epoch + 1 }));
-			}, activeTiming.labelExitDuration);
+			}, timing.labelExitDuration);
 		} else if (phase === 'animating') {
 			// Time from the start of the geometry tween until it lands. The exit
 			// window is already spent, so subtract it from the enter delay.
-			const animatingMs = Math.max(0, activeTiming.labelEnterDelay - activeTiming.labelExitDuration);
+			const animatingMs = Math.max(0, timing.labelEnterDelay - timing.labelExitDuration);
 			timer = setTimeout(() => {
 				setState((prev) => ({ ...prev, phase: 'entering' }));
 			}, animatingMs);
 		} else {
 			timer = setTimeout(() => {
 				setState((prev) => ({ ...prev, phase: 'visible' }));
-			}, activeTiming.labelEnterDuration);
+			}, timing.labelEnterDuration);
 		}
 
 		return () => clearTimeout(timer);
-	}, [phase, epoch, activeTiming]);
+	}, [phase, epoch, transition, immediate]);
 
 	const value = useMemo<TransitionContextValue>(
 		() => ({ phase, epoch, immediate: activeTiming.immediate, timing: activeTiming }),

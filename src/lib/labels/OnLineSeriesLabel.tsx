@@ -7,6 +7,7 @@ import {
 	getDirectLabelOffsetFromCustom,
 	hasAuthorDirectLabelOverride,
 	resolveLegendTextAnchor,
+	useDragGesture,
 	wrapRichText,
 } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
@@ -80,7 +81,7 @@ export function OnLineSeriesLabel({
 
 	const dragRef = useRef<SVGGElement>(null);
 	const textRef = useRef<SVGTextElement>(null);
-	const isDraggingRef = useRef(false);
+	const gesture = useDragGesture();
 
 	const authorOffset = useMemo(
 		() =>
@@ -102,13 +103,13 @@ export function OnLineSeriesLabel({
 	const positionRef = useRef({ dx: resolvedDefaultDx, dy: resolvedDefaultDy });
 
 	useEffect(() => {
-		if (isDraggingRef.current) {
+		if (gesture.isActive()) {
 			return;
 		}
 		const next = { dx: resolvedDefaultDx, dy: resolvedDefaultDy };
 		setPosition(next);
 		positionRef.current = next;
-	}, [resolvedDefaultDx, resolvedDefaultDy, scaleX, scaleY]);
+	}, [gesture, resolvedDefaultDx, resolvedDefaultDy, scaleX, scaleY]);
 
 	useEffect(() => {
 		positionRef.current = position;
@@ -155,8 +156,7 @@ export function OnLineSeriesLabel({
 
 	const handleClick = useCallback(
 		(e: React.MouseEvent<SVGTextElement>) => {
-			if (isDraggingRef.current) {
-				isDraggingRef.current = false;
+			if (gesture.consumeClick()) {
 				return;
 			}
 			if (legendItemHandlers?.onClick) {
@@ -164,28 +164,29 @@ export function OnLineSeriesLabel({
 				legendItemHandlers.onClick(category, displayText, textRef.current);
 			}
 		},
-		[legendItemHandlers, category, displayText]
+		[gesture, legendItemHandlers, category, displayText]
 	);
 
 	const handleDragStart = () => {
-		isDraggingRef.current = false;
+		gesture.press();
 		setIsDragging(true);
 		legendItemHandlers?.onItemDragStart?.(category);
 	};
 
 	const handleDrag = (_e: DraggableEvent, data: DraggableData) => {
-		isDraggingRef.current = true;
-		setPosition((prev) => {
-			const next = {
-				dx: prev.dx + data.deltaX,
-				dy: prev.dy + data.deltaY,
-			};
-			positionRef.current = next;
-			return next;
-		});
+		if (gesture.move(data.deltaX, data.deltaY) === 'ignored') {
+			return;
+		}
+		const next = {
+			dx: positionRef.current.dx + data.deltaX,
+			dy: positionRef.current.dy + data.deltaY,
+		};
+		positionRef.current = next;
+		setPosition(next);
 	};
 
 	const handleDragStop = () => {
+		gesture.release();
 		setIsDragging(false);
 		const { dx, dy } = positionRef.current;
 		const containerX = paddingLeft + anchorX + dx;

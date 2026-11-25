@@ -9,6 +9,7 @@ import {
 	DataContext,
 	DEFAULT_FONT_FAMILY,
 	parseRichText,
+	useDragGesture,
 } from '@prc/charting-utilities';
 import { RichTextHtml } from '../primitives/RichText';
 
@@ -176,15 +177,18 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 
 	// Track position during drag (grouped mode only; harmless in detached mode).
 	const [position, setPosition] = useState({ x: offsetX, y: offsetY });
+	const positionRef = useRef(position);
 	const [isDragging, setIsDragging] = useState(false);
-	const didDragRef = useRef(false);
+	const gesture = useDragGesture();
 	// react-draggable needs an explicit nodeRef under React 19 (findDOMNode was removed).
 	const dragRef = useRef<HTMLDivElement>(null);
 
 	// Update position when legend config changes
 	useEffect(() => {
-		setPosition({ x: offsetX, y: offsetY });
-	}, [offsetX, offsetY]);
+		if (gesture.isActive()) return;
+		positionRef.current = { x: offsetX, y: offsetY };
+		setPosition(positionRef.current);
+	}, [gesture, offsetX, offsetY]);
 
 	// Keep free-position layout until alignment persists as 'none' after drag.
 	useEffect(() => {
@@ -223,21 +227,22 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 	const activeAlignment = isDragging ? 'none' : alignment;
 
 	const handleDrag = (e: DraggableEvent, data: DraggableData) => {
-		if (!didDragRef.current) {
-			if (data.deltaX === 0 && data.deltaY === 0) {
-				return;
-			}
-			didDragRef.current = true;
+		const step = gesture.move(data.deltaX, data.deltaY);
+		if (step === 'ignored') {
+			return;
+		}
+		if (step === 'first') {
 			setIsDragging(true);
 			if (wpEditorFunctions?.legend?.onDragActivate) {
 				wpEditorFunctions.legend.onDragActivate();
 			}
 		}
 
-		const newX = position.x + data.deltaX;
-		const newY = position.y + data.deltaY;
+		const newX = positionRef.current.x + data.deltaX;
+		const newY = positionRef.current.y + data.deltaY;
 
-		setPosition({ x: newX, y: newY });
+		positionRef.current = { x: newX, y: newY };
+		setPosition(positionRef.current);
 
 		if (wpEditorFunctions?.legend?.onDrag) {
 			wpEditorFunctions.legend.onDrag(newX, newY, true);
@@ -245,21 +250,21 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 	};
 
 	const handleDragStart = () => {
-		didDragRef.current = false;
+		gesture.press();
 		if (wpEditorFunctions?.legend?.onDragStart) {
 			wpEditorFunctions.legend.onDragStart();
 		}
 	};
 
 	const handleDragStop = () => {
-		if (!didDragRef.current) {
+		if (!gesture.release()) {
 			if (wpEditorFunctions?.legend?.onDragCancel) {
 				wpEditorFunctions.legend.onDragCancel();
 			}
 			return;
 		}
 		if (wpEditorFunctions?.legend?.onDragEnd) {
-			wpEditorFunctions.legend.onDragEnd(position.x, position.y);
+			wpEditorFunctions.legend.onDragEnd(positionRef.current.x, positionRef.current.y);
 		}
 		if (alignment === 'none') {
 			setIsDragging(false);
@@ -267,8 +272,7 @@ export const StyledLegend = ({ children, legend, chartWidth, chartHeight, layout
 	};
 
 	const handleChromeClick = (event: MouseEvent<HTMLDivElement>) => {
-		if (didDragRef.current) {
-			didDragRef.current = false;
+		if (gesture.consumeClick()) {
 			return;
 		}
 		const target = event.target as HTMLElement | null;

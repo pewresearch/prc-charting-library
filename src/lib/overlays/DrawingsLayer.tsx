@@ -20,7 +20,7 @@ import type {
 	PanelRect,
 	PositioningScale,
 } from '@prc/charting-utilities';
-import { DataContext, getPositioningScale, resolvePanelRect } from '@prc/charting-utilities';
+import { DataContext, getPositioningScale, resolvePanelRect, useDragGesture } from '@prc/charting-utilities';
 import { useContext, useEffect, useRef, useState } from 'react';
 import type { DraggableData, DraggableEvent } from 'react-draggable';
 import { DraggableCore } from 'react-draggable';
@@ -395,17 +395,16 @@ const InteractiveDrawing = ({
 
 	const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 	const dragOffsetRef = useRef(dragOffset);
-	const isDraggingRef = useRef(false);
-	const hasDraggedRef = useRef(false);
+	const gesture = useDragGesture();
 	const dragRef = useRef<SVGGElement>(null);
 
 	useEffect(() => {
-		if (isDraggingRef.current) {
+		if (gesture.isActive()) {
 			return;
 		}
 		dragOffsetRef.current = { x: 0, y: 0 };
 		setDragOffset({ x: 0, y: 0 });
-	}, [drawing]);
+	}, [gesture, drawing]);
 
 	const toLayoutDelta = (dx: number, dy: number) => {
 		if (positioningScale) {
@@ -425,7 +424,9 @@ const InteractiveDrawing = ({
 	}
 
 	const handleDrag = (_event: DraggableEvent, data: DraggableData) => {
-		hasDraggedRef.current = true;
+		if (gesture.move(data.deltaX, data.deltaY) === 'ignored') {
+			return;
+		}
 		const next = {
 			x: dragOffsetRef.current.x + data.deltaX,
 			y: dragOffsetRef.current.y + data.deltaY,
@@ -436,15 +437,14 @@ const InteractiveDrawing = ({
 	};
 
 	const handleDragStart = () => {
-		hasDraggedRef.current = false;
-		isDraggingRef.current = true;
+		gesture.press();
 		drawingsApi?.onDragStart?.(drawing.id);
 	};
 
 	const handleDragStop = () => {
 		const { x: displayDx, y: displayDy } = dragOffsetRef.current;
 		const layoutDelta = toLayoutDelta(displayDx, displayDy);
-		isDraggingRef.current = false;
+		gesture.release();
 		drawingsApi?.onDragEnd?.(drawing.id, layoutDelta.x, layoutDelta.y);
 		// Visual offset resets when props update; clear immediately to avoid double-offset
 		// if the attribute write is slow.
@@ -458,8 +458,7 @@ const InteractiveDrawing = ({
 			transform={`translate(${dragOffset.x}, ${dragOffset.y})`}
 			style={{ cursor: 'grab', pointerEvents: 'all' }}
 			onClick={(event) => {
-				if (hasDraggedRef.current) {
-					hasDraggedRef.current = false;
+				if (gesture.consumeClick()) {
 					return;
 				}
 				drawingsApi?.onClick?.(drawing.id, event.currentTarget);

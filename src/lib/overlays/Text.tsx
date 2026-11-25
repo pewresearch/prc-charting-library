@@ -17,6 +17,7 @@ import {
 	resolvePanelRect,
 	scalePositionToDisplay,
 	scalePositionToLayout,
+	useDragGesture,
 	wrapRichText,
 } from '@prc/charting-utilities';
 import { Group } from '@visx/group';
@@ -135,11 +136,7 @@ export const Annotation = ({
 		y: displayY,
 	});
 	const dragPositionRef = useRef(dragPosition);
-	const isDraggingRef = useRef(false);
-	// Ref to detect whether a drag occurred so we can suppress the post-drag click.
-	// Not reset in handleDragStop — reset inside onClick so it's still true when
-	// the click event fires after mouseup.
-	const hasDraggedRef = useRef(false);
+	const gesture = useDragGesture();
 	// react-draggable needs an explicit nodeRef under React 19 (findDOMNode was removed).
 	// Must point at the underlying <g>, so it's passed to <Group> via innerRef.
 	const dragRef = useRef<SVGGElement>(null);
@@ -148,10 +145,10 @@ export const Annotation = ({
 
 	// Sync from props when not dragging
 	useEffect(() => {
-		if (isDraggingRef.current) return;
+		if (gesture.isActive()) return;
 		dragPositionRef.current = { x: displayX, y: displayY };
 		setDragPosition({ x: displayX, y: displayY });
-	}, [displayX, displayY]);
+	}, [gesture, displayX, displayY]);
 
 	const isImage = isImageAnnotation(annotation);
 	useEffect(() => {
@@ -164,9 +161,9 @@ export const Annotation = ({
 
 	// Handle drag events
 	const handleDrag = (e: DraggableEvent, data: DraggableData) => {
-		// Only set on actual pointer movement, not on mousedown, so plain clicks
-		// are never flagged as drags.
-		hasDraggedRef.current = true;
+		if (gesture.move(data.deltaX, data.deltaY) === 'ignored') {
+			return;
+		}
 
 		const newDisplayX = dragPositionRef.current.x + data.deltaX;
 		const newDisplayY = dragPositionRef.current.y + data.deltaY;
@@ -181,9 +178,7 @@ export const Annotation = ({
 	};
 
 	const handleDragStart = () => {
-		// Reset so a fresh click after a previous drag isn't suppressed.
-		hasDraggedRef.current = false;
-		isDraggingRef.current = true;
+		gesture.press();
 		if (id && wpEditorFunctions?.annotations?.onDragStart) {
 			wpEditorFunctions.annotations.onDragStart(id);
 		}
@@ -192,7 +187,7 @@ export const Annotation = ({
 	const handleDragStop = () => {
 		const { x: finalDisplayX, y: finalDisplayY } = dragPositionRef.current;
 		const layoutPos = toLayout(finalDisplayX, finalDisplayY);
-		isDraggingRef.current = false;
+		gesture.release();
 
 		if (id && wpEditorFunctions?.annotations?.onDragEnd) {
 			wpEditorFunctions.annotations.onDragEnd(id, layoutPos.x, layoutPos.y);
@@ -214,8 +209,7 @@ export const Annotation = ({
 	}
 
 	const handleClick = (event: React.MouseEvent<SVGElement>) => {
-		if (hasDraggedRef.current) {
-			hasDraggedRef.current = false;
+		if (gesture.consumeClick()) {
 			return;
 		}
 		if (wpEditorFunctions?.annotations?.onClick && id) {

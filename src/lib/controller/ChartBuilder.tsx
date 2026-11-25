@@ -1,9 +1,9 @@
 // React Dependencies
-import { useContext, lazy, Suspense } from 'react';
+import { useContext, Suspense } from 'react';
 // External Dependencies
 import styled from '@emotion/styled';
 // Internal Dependencies
-import { BaseConfig, DataContext, TableData } from '@prc/charting-utilities';
+import { BaseConfig, createLazyComponent, DataContext, TableData } from '@prc/charting-utilities';
 import {
 	BarHorizontal,
 	BarVertical,
@@ -27,14 +27,15 @@ import {
 	Hemicycle,
 } from '../charts';
 
-// Lazy load map components - these will be code-split with their topology files
-const AlbersUSA = lazy(() => import('../charts/maps/AlbersUSA'));
-const AlbersUSACounties = lazy(() => import('../charts/maps/AlbersUSACounties'));
-const AlbersUSACBSA = lazy(() => import('../charts/maps/AlbersUSACBSA'));
-const BlockUSA = lazy(() => import('../charts/maps/BlockUSA'));
-const HexUSA = lazy(() => import('../charts/maps/HexUSA'));
-const World = lazy(() => import('../charts/maps/World'));
-const WorldOrthographic = lazy(() => import('../charts/maps/WorldOrthographic'));
+// Lazy load map components - these will be code-split with their topology files.
+// createLazyComponent, unlike React.lazy, can load a failed chunk again.
+const AlbersUSA = createLazyComponent(() => import('../charts/maps/AlbersUSA'));
+const AlbersUSACounties = createLazyComponent(() => import('../charts/maps/AlbersUSACounties'));
+const AlbersUSACBSA = createLazyComponent(() => import('../charts/maps/AlbersUSACBSA'));
+const BlockUSA = createLazyComponent(() => import('../charts/maps/BlockUSA'));
+const HexUSA = createLazyComponent(() => import('../charts/maps/HexUSA'));
+const World = createLazyComponent(() => import('../charts/maps/World'));
+const WorldOrthographic = createLazyComponent(() => import('../charts/maps/WorldOrthographic'));
 
 const ChartContainer = styled.div<{ maxWidth: number; minHeight?: number }>`
 	max-width: ${(props: { maxWidth: number; minHeight?: number }) => props.maxWidth}px;

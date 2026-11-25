@@ -79,6 +79,7 @@ export const DiffColumn = ({
 	};
 	const onHeaderClick = wpEditorFunctions?.diffColumn?.onHeaderClick;
 	const onCellClick = wpEditorFunctions?.diffColumn?.onClick;
+	const headerFont = diffColumn.style.headerFontFamily || diffColumn.style.fontFamily;
 
 	return (
 		<g x={innerWidth + diffColumn.style.marginLeft} y={0} width={diffColumn.style.width} height={innerHeight}>
@@ -106,7 +107,7 @@ export const DiffColumn = ({
 									fontSize: diffColumn.style.headerFontSize,
 									fontWeight: diffColumn.style.headerFontWeight ?? diffColumn.style.fontWeight,
 									fontStyle: diffColumn.style.headerFontStyle ?? diffColumn.style.fontStyle,
-									fontFamily: diffColumn.style.headerFontFamily ?? diffColumn.style.fontFamily,
+									fontFamily: headerFont,
 									cursor: 'pointer',
 									pointerEvents: 'all' as const,
 								},
@@ -116,7 +117,7 @@ export const DiffColumn = ({
 									fontSize: diffColumn.style.headerFontSize,
 									fontWeight: diffColumn.style.headerFontWeight ?? diffColumn.style.fontWeight,
 									fontStyle: diffColumn.style.headerFontStyle ?? diffColumn.style.fontStyle,
-									fontFamily: diffColumn.style.headerFontFamily ?? diffColumn.style.fontFamily,
+									fontFamily: headerFont,
 								},
 							})}
 				>

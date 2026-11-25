@@ -1,6 +1,6 @@
 import { useContext, useRef, useState } from 'react';
 import type { Drawing, LineDrawing, ArrowDrawing, LollipopDrawing } from '@prc/charting-utilities';
-import { DataContext } from '@prc/charting-utilities';
+import { DataContext, releasePointerCaptureSafely, useDragGesture } from '@prc/charting-utilities';
 
 type LineLikeDrawing = LineDrawing | ArrowDrawing | LollipopDrawing;
 
@@ -89,6 +89,7 @@ export function DrawingSelectionHandles({ drawing, width, height, layout }: Draw
 		corner?: string;
 		breakpointIdx?: number;
 	} | null>(null);
+	const gesture = useDragGesture();
 
 	if (!api?.useInChartSelectionHandles || !manipulation || !api.onDrawingsChange) {
 		return null;
@@ -108,6 +109,7 @@ export function DrawingSelectionHandles({ drawing, width, height, layout }: Draw
 		(event: React.PointerEvent) => {
 			event.stopPropagation();
 			event.preventDefault();
+			gesture.press();
 			api.onDragStart?.(drawing.id);
 			setDragState({ type, ...extra });
 			(event.currentTarget as Element).setPointerCapture(event.pointerId);
@@ -146,12 +148,16 @@ export function DrawingSelectionHandles({ drawing, width, height, layout }: Draw
 		});
 	};
 
-	const handlePointerUp = (event: React.PointerEvent) => {
-		if (dragState) {
-			(event.currentTarget as Element).releasePointerCapture(event.pointerId);
-			setDragState(null);
-			api.onSelectionDragEnd?.();
+	// pointerup, pointercancel, and lostpointercapture can each end the drag, and
+	// releasing capture fires lostpointercapture after pointerup. Only the first
+	// one hands block selection back.
+	const handlePointerEnd = (event: React.PointerEvent) => {
+		if (!gesture.cancel()) {
+			return;
 		}
+		setDragState(null);
+		api.onSelectionDragEnd?.();
+		releasePointerCaptureSafely(event.target, event.pointerId);
 	};
 
 	const isLine = manipulation.isLineTypeDrawing(drawing);
@@ -173,7 +179,9 @@ export function DrawingSelectionHandles({ drawing, width, height, layout }: Draw
 				className="cb__drawing-selection-handles"
 				style={{ pointerEvents: 'all' }}
 				onPointerMove={handlePointerMove}
-				onPointerUp={handlePointerUp}
+				onPointerUp={handlePointerEnd}
+				onPointerCancel={handlePointerEnd}
+				onLostPointerCapture={handlePointerEnd}
 			>
 				<circle
 					cx={start.x}
@@ -282,7 +290,9 @@ export function DrawingSelectionHandles({ drawing, width, height, layout }: Draw
 			className="cb__drawing-selection-handles"
 			style={{ pointerEvents: 'all' }}
 			onPointerMove={handlePointerMove}
-			onPointerUp={handlePointerUp}
+			onPointerUp={handlePointerEnd}
+			onPointerCancel={handlePointerEnd}
+			onLostPointerCapture={handlePointerEnd}
 		>
 			<rect
 				x={outerBounds.x}
